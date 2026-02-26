@@ -54,7 +54,9 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 
 ## Quick Start with Docker (Recommended)
 
-### Option 1: Using Pre-built Image (Easiest)
+### Option 1: Using Pre-built Image from GHCR (Easiest)
+
+Pull the image from GitHub Container Registry and run:
 
 1. Create a directory for your setup:
 ```bash
@@ -66,15 +68,17 @@ mkdir emby-wrapped && cd emby-wrapped
 version: '3.8'
 services:
   emby-wrapped:
-    image: ghcr.io/davidtorcivia/emby-wrapped-ftp:latest
+    image: ghcr.io/tonghongte/emby-wrapped-ftp:latest
     container_name: emby-wrapped
     ports:
       - "3000:3000"
     environment:
       - EMBY_URL=http://your-emby-server:8096
       - EMBY_API_KEY=your-api-key-here
-      - TMDB_API_KEY=  # Optional: for enhanced poster images
-      - PUBLIC_URL=    # Optional: for share links
+      - TMDB_API_KEY=   # Optional: for enhanced poster images
+      - PUBLIC_URL=     # Optional: for share links
+      - CACHE_TTL=86400 # Optional
+      - FILTER_USER_ID= # Optional: filter by user's library
     volumes:
       - ./music:/app/static/music:ro  # Optional: custom background music
     restart: unless-stopped
@@ -82,16 +86,18 @@ services:
 
 3. Run:
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 4. Access at `http://localhost:3000`
+
+**Portainer:** In Portainer → Stacks → Add stack → paste the above compose and set your `EMBY_URL` and `EMBY_API_KEY` in the environment section.
 
 ### Option 2: Build from Source
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/davidtorcivia/emby-wrapped-ftp.git
+git clone https://github.com/tonghongte/emby-wrapped-ftp.git
 cd emby-wrapped-ftp
 ```
 
@@ -139,7 +145,7 @@ git pull && docker-compose up -d --build
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/davidtorcivia/emby-wrapped-ftp.git
+git clone https://github.com/tonghongte/emby-wrapped-ftp.git
 cd emby-wrapped-ftp
 ```
 

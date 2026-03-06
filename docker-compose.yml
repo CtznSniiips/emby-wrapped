@@ -1,9 +1,6 @@
-version: '3.8'
-
 services:
   emby-wrapped:
-    image: emby-wrapped:latest
-    build: .
+    image: ghcr.io/ctznsniiips/emby-wrapped-ftp:latest
     container_name: emby-wrapped
     ports:
       - "8056:3000"

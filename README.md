@@ -68,7 +68,7 @@ mkdir emby-wrapped && cd emby-wrapped
 version: '3.8'
 services:
   emby-wrapped:
-    image: ghcr.io/tonghongte/emby-wrapped-ftp:latest
+    image: ghcr.io/ctznsniiips/emby-wrapped-ftp:latest
     container_name: emby-wrapped
     ports:
       - "3000:3000"

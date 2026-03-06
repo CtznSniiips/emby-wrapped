@@ -208,7 +208,7 @@ export function getAvailableTimeRanges(): { value: string; label: string }[] {
         const monthNames = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
         options.push({
             value: `${currentYear}-${monthStr}`,
-            label: `${currentYear} ${monthNames[month - 1]}`
+            label: `${currentYear}-${monthNames[month - 1]}`
         });
     }
 

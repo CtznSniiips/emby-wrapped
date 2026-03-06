@@ -230,17 +230,19 @@ export function getAvailableTimeRanges(): { value: string; label: string }[] {
  */
 export function calculateLookbackDays(range: TimeRange): number {
     const now = new Date();
-    const targetStart = new Date(range.year, 0, 1); // Jan 1st of the requested year
-    
-    // If target is in the future (shouldn't happen usually), default to 365
-    if (targetStart > now) return 365;
+    const targetStart = range.type === 'month' && range.month
+        ? new Date(range.year, range.month - 1, 1) // First day of requested month
+        : new Date(range.year, 0, 1); // Jan 1st of requested year
 
-    // Calculate difference in days
-    const diffTime = Math.abs(now.getTime() - targetStart.getTime());
+    // If target is in the future (manual URL edits), fetch a minimal safe window
+    if (targetStart > now) return 31;
+
+    // Calculate difference in days and add a small buffer for timezone/plugin boundaries
+    const diffTime = now.getTime() - targetStart.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // Return days needed + buffer, or at least 365
-    return Math.max(365, diffDays + 14);
+    // Avoid over-fetching large windows for current-year/month (can skew capped plugin results)
+    return Math.max(31, diffDays + 14);
 }
 
 /**

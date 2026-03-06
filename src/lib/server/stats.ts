@@ -9,9 +9,18 @@ export interface TimeRange {
 
 export function parseTimeRange(value: string): TimeRange {
     if (value.indexOf('-') !== -1) {
-        // Format: "2026-01" (month)
+        // Supported month formats:
+        // - "1-2026" / "01-2026" (preferred)
+        // - "2026-01" (legacy)
         const parts = value.split('-');
-        return { type: 'month', year: Number(parts[0]), month: Number(parts[1]) };
+
+        if (parts[0].length === 4) {
+            // Legacy year-month format
+            return { type: 'month', year: Number(parts[0]), month: Number(parts[1]) };
+        }
+
+        // Preferred month-year format
+        return { type: 'month', year: Number(parts[1]), month: Number(parts[0]) };
     }
     // Format: "2025" (year)
     return { type: 'year', year: Number(value) };
@@ -19,16 +28,14 @@ export function parseTimeRange(value: string): TimeRange {
 
 export function formatTimeRangeLabel(range: TimeRange): string {
     if (range.type === 'month' && range.month) {
-        const monthNames = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-        return `${range.year}${monthNames[range.month - 1]}`;
+        return `${range.month}-${range.year}`;
     }
     return `${range.year}`;
 }
 
 export function timeRangeToString(range: TimeRange): string {
     if (range.type === 'month' && range.month) {
-        const monthStr = range.month < 10 ? '0' + range.month : String(range.month);
-        return `${range.year}-${monthStr}`;
+        return `${range.month}-${range.year}`;
     }
     return String(range.year);
 }
@@ -116,8 +123,8 @@ export interface UserStats {
     userId: string;
     username: string;
     year: number;
-    timeRange: string;  // e.g., "2025" or "2026-01"
-    timeRangeLabel: string;  // e.g., "2025" or "2026-1"
+    timeRange: string;  // e.g., "2025" or "1-2026"
+    timeRangeLabel: string;  // e.g., "2025" or "1-2026"
     generatedAt: string;
 
     // Time stats
@@ -202,13 +209,15 @@ export function getAvailableTimeRanges(): { value: string; label: string }[] {
     // Add previous year
     options.push({ value: String(currentYear - 1), label: `${currentYear - 1}` });
 
+    // Add current year (full year-to-date)
+    options.push({ value: String(currentYear), label: `${currentYear}` });
+
     // Add months of current year (strictly before current month)
     for (let month = 1; month < currentMonth; month++) {
         const monthStr = month < 10 ? '0' + month : String(month);
-        const monthNames = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
         options.push({
-            value: `${currentYear}-${monthStr}`,
-            label: `${currentYear}-${monthNames[month - 1]}`
+            value: `${monthStr}-${currentYear}`,
+            label: `${month}-${currentYear}`
         });
     }
 

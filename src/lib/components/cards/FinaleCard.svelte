@@ -103,7 +103,7 @@
 			<span>{UNICODE.diamond}</span>
 		</div>
 
-		<h1 class="title font-display">That's a wrap on 2025</h1>
+		<h1 class="title font-display">That's a wrap on {stats.timeRangeLabel}</h1>
 
 		<div class="stats-grid">
 			<div class="stat-item">

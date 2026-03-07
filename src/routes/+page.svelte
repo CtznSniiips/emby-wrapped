@@ -22,8 +22,11 @@
 		selectedTimeRange = data.timeRangeOptions[0].value;
 	}
 
-	// Get display year (e.g. "2025" from "2025年度")
-	$: displayYear = data.timeRangeOptions?.find(o => o.value === selectedTimeRange)?.label.replace(/年度|年.*/, '') || "2025";
+	$: selectedTimeRangeOption = data.timeRangeOptions?.find(
+		(o) => o.value === selectedTimeRange,
+	);
+	$: defaultPeriodLabel = String(new Date().getFullYear() - 1);
+	$: displayPeriod = selectedTimeRangeOption?.label || defaultPeriodLabel;
 
 
 	// Server stats
@@ -161,7 +164,7 @@
 </script>
 
 <svelte:head>
-	<title>2025 Wrapped · Emby for the People</title>
+	<title>{displayPeriod} Wrapped · Emby for the People</title>
 </svelte:head>
 
 {#if showUserForm}
@@ -179,7 +182,7 @@
 				</div>
 
 				<h1 class="title font-display">
-					<span class="year">{displayYear}</span>
+					<span class="year">{displayPeriod}</span>
 					<span class="wrapped">Wrapped</span>
 				</h1>
 
@@ -193,7 +196,7 @@
 				</div>
 
 				<p class="subtitle">
-					Enter your username to see your personal year
+					Enter your username to see your personal wrapped for this period
 				</p>
 			</header>
 
@@ -257,7 +260,7 @@
 						class="big-title font-display"
 						class:show={introPhase >= 2}
 					>
-						<span class="year">{displayYear}</span>
+						<span class="year">{displayPeriod}</span>
 						<span class="wrapped">Wrapped</span>
 					</h1>
 
@@ -292,7 +295,7 @@
 				<div class="card-content time-card">
 					<p class="card-label" class:show={timePhase >= 1}>
 						<span class="unicode">{UNICODE.dots}</span>
-						This year, our community watched
+						In {displayPeriod}, our community watched
 					</p>
 
 					<div class="giant-stat" class:show={timePhase >= 2}>
@@ -447,7 +450,7 @@
 					</h2>
 
 					<p class="cta-subtitle" class:show={ctaPhase >= 3}>
-						Discover your personal 2025 wrapped
+						Discover your personal {displayPeriod} wrapped
 					</p>
 
 					<button

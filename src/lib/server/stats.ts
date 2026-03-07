@@ -284,7 +284,7 @@ export function calculateLookbackDays(range: TimeRange): number {
 /**
  * Aggregate playback data into user stats
  */
-export async function aggregateUserStats(userId: string, username: string, timeRange: TimeRange | number = 2025): Promise<UserStats> {
+export async function aggregateUserStats(userId: string, username: string, timeRange: TimeRange | number = new Date().getFullYear() - 1): Promise<UserStats> {
     // Convert legacy year number to TimeRange
     const range: TimeRange = typeof timeRange === 'number'
         ? { type: 'year', year: timeRange }
@@ -713,7 +713,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
 /**
  * Aggregate music playback data into full music stats
  */
-export async function aggregateMusicStats(userId: string, username: string, timeRange: TimeRange | number = 2025): Promise<FullMusicStats> {
+export async function aggregateMusicStats(userId: string, username: string, timeRange: TimeRange | number = new Date().getFullYear() - 1): Promise<FullMusicStats> {
     // Convert legacy year number to TimeRange
     const range: TimeRange = typeof timeRange === 'number'
         ? { type: 'year', year: timeRange }

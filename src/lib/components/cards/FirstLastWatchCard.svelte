@@ -58,7 +58,7 @@
 		<!-- Title -->
 		<div class="title-section" class:show={phase >= 1}>
 			<span class="unicode">{UNICODE.arrow}</span>
-			<h2 class="section-title font-display">Your 2025 Journey</h2>
+			<h2 class="section-title font-display">Your {stats.timeRangeLabel} Journey</h2>
 		</div>
 
 		<!-- Timeline -->

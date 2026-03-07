@@ -3,7 +3,7 @@
     import { UNICODE } from "$lib/utils/format";
 
     export let targetId: string;
-    export let fileName: string = "emby-wrapped-2025.png";
+    export let fileName: string = "emby-wrapped.png";
     export let label: string = "Share";
 
     let isGenerating = false;
@@ -45,7 +45,7 @@
                 ) {
                     await navigator.share({
                         files: [file],
-                        title: "My Emby Wrapped 2025",
+                        title: "My Emby Wrapped",
                         text: "Check out my year in Review!",
                     });
                 } else {

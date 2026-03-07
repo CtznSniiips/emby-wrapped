@@ -6,15 +6,15 @@
 </script>
 
 <svelte:head>
-	<title>Emby Wrapped 2025 ◈ Emby for the People</title>
+	<title>Emby Wrapped ◈ Emby for the People</title>
 	<meta
 		name="description"
-		content="Your 2025 viewing year, rewatched. Discover your personal media statistics from Emby for the People."
+		content="Your viewing recap, rewatched. Discover your personal media statistics from Emby for the People."
 	/>
-	<meta property="og:title" content="Emby Wrapped 2025" />
+	<meta property="og:title" content="Emby Wrapped" />
 	<meta
 		property="og:description"
-		content="Your 2025 viewing year, rewatched."
+		content="Your viewing recap, rewatched."
 	/>
 	<meta property="og:type" content="website" />
 	<meta name="twitter:card" content="summary_large_image" />

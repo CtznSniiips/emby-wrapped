@@ -16,6 +16,35 @@
 		}, 100);
 	});
 
+
+	function getContentMeta(item: UserStats["firstWatch"] | UserStats["lastWatch"]) {
+		if (!item) {
+			return { title: "Unknown", detail: "" };
+		}
+
+		const isEpisode = item.type.toLowerCase() === "episode";
+		if (!isEpisode) {
+			const [title] = item.name.split(" - ");
+			return {
+				title: title || item.name || "Unknown",
+				detail: item.type.toLowerCase(),
+			};
+		}
+
+		const parts = item.name.split(" - ").map((part) => part.trim()).filter(Boolean);
+		const showName = parts[0] || item.name || "Unknown";
+		const episodeCodePart = parts.find((part) => /^s\d{1,2}e\d{1,3}$/i.test(part));
+		const episodeCode = episodeCodePart ? episodeCodePart.toUpperCase() : "";
+		const episodeTitle = episodeCodePart
+			? parts.slice(parts.indexOf(episodeCodePart) + 1).join(" - ")
+			: parts.slice(1).join(" - ");
+
+		return {
+			title: showName,
+			detail: [episodeCode, episodeTitle || "Untitled Episode"].filter(Boolean).join(" "),
+		};
+	}
+
 	function startNarrative() {
 		const timeline = [
 			{ phase: 1, delay: 0 }, // Title
@@ -31,18 +60,10 @@
 		});
 	}
 
-	$: firstName =
-		stats.firstWatch?.name.split(" - ")[0] ||
-		stats.firstWatch?.name ||
-		"Unknown";
-	$: lastName =
-		stats.lastWatch?.name.split(" - ")[0] ||
-		stats.lastWatch?.name ||
-		"Unknown";
+	$: firstMeta = getContentMeta(stats.firstWatch);
+	$: lastMeta = getContentMeta(stats.lastWatch);
 	$: firstDate = stats.firstWatch ? formatDate(stats.firstWatch.date) : "";
 	$: lastDate = stats.lastWatch ? formatDate(stats.lastWatch.date) : "";
-	$: firstType = stats.firstWatch?.type.toLowerCase() || "";
-	$: lastType = stats.lastWatch?.type.toLowerCase() || "";
 	$: totalPlays = stats.episodesWatched + stats.moviesWatched;
 </script>
 
@@ -74,8 +95,8 @@
 						<span class="date-text font-mono">{firstDate}</span>
 					</div>
 				</div>
-				<h3 class="content-title font-display">{firstName}</h3>
-				<span class="content-type">{firstType}</span>
+				<h3 class="content-title font-display">{firstMeta.title}</h3>
+				<span class="content-type">{firstMeta.detail}</span>
 			</div>
 
 			<!-- Connector -->
@@ -99,8 +120,8 @@
 						<span class="date-text font-mono">{lastDate}</span>
 					</div>
 				</div>
-				<h3 class="content-title font-display">{lastName}</h3>
-				<span class="content-type">{lastType}</span>
+				<h3 class="content-title font-display">{lastMeta.title}</h3>
+				<span class="content-type">{lastMeta.detail}</span>
 			</div>
 		</div>
 

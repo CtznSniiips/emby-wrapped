@@ -164,12 +164,19 @@ export function formatMonthShort(month: number): string {
  * Format date nicely
  */
 export function formatDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric'
-    });
+	const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+	const date = dateMatch
+		? new Date(
+				Number(dateMatch[1]),
+				Number(dateMatch[2]) - 1,
+				Number(dateMatch[3])
+			)
+		: new Date(dateStr);
+	return date.toLocaleDateString('en-US', {
+		month: 'long',
+		day: 'numeric',
+		year: 'numeric'
+	});
 }
 
 /**

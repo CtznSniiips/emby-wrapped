@@ -16,10 +16,22 @@
 	let isLoading = false;
 	let error = "";
 	let selectedTimeRange = "";
+	let hasAppliedPrefill = false;
 
-	// Initialize selectedTimeRange
+	// Initialize selectedTimeRange, honoring prefilled period from URL
 	$: if (data.timeRangeOptions && data.timeRangeOptions.length > 0 && !selectedTimeRange) {
-		selectedTimeRange = data.timeRangeOptions[0].value;
+		const hasPrefilledPeriod = data.prefilledPeriod
+			? data.timeRangeOptions.some((option) => option.value === data.prefilledPeriod)
+			: false;
+
+		selectedTimeRange = hasPrefilledPeriod
+			? data.prefilledPeriod
+			: data.timeRangeOptions[0].value;
+	}
+
+	$: if (!hasAppliedPrefill && data.prefilledUsername) {
+		username = data.prefilledUsername;
+		hasAppliedPrefill = true;
 	}
 
 	$: selectedTimeRangeOption = data.timeRangeOptions?.find(

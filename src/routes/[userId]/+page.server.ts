@@ -101,29 +101,34 @@ export const load: PageServerLoad = async ({ params, url }) => {
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/f6b74b87-f707-4f3b-8031-077d6c5d0a25',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'[userId]/+page.server.ts:126',message:'Page load entry',data:{userId: params.userId, period: url.searchParams.get('period')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
     // #endregion
-    const { userId } = params;
+    const { userId: userIdentifier } = params;
 
     // Get time range from URL parameter, default to previous year
     const now = new Date();
     const defaultTimeRange = String(now.getFullYear() - 1);
-    const timeRangeParam = url.searchParams.get('period') || defaultTimeRange;
+    const periodParam = url.searchParams.get('period');
+    const rawQuery = url.search.slice(1);
+    const shorthandParam = !rawQuery.includes('=') && rawQuery ? decodeURIComponent(rawQuery) : null;
+    const timeRangeParam = periodParam || shorthandParam || defaultTimeRange;
     const timeRange = parseTimeRange(timeRangeParam);
     const timeRangeStr = timeRangeToString(timeRange);
 
     try {
         const users = await emby.getUsers();
-        const user = users.find(u => u.Id === userId);
+        const user = users.find((u) =>
+            u.Id === userIdentifier || u.Name.toLowerCase() === userIdentifier.toLowerCase()
+        );
 
         if (!user) {
             throw error(404, 'User not found');
         }
 
         // Check cache first
-        let stats = getCachedStats(userId, timeRangeStr);
+        let stats = getCachedStats(user.Id, timeRangeStr);
 
         if (!stats) {
             // Cache miss - compute stats
-            stats = await aggregateUserStats(userId, user.Name, timeRange);
+            stats = await aggregateUserStats(user.Id, user.Name, timeRange);
 
             // Enhance images with TMDB fallbacks
             const [enhancedShows, enhancedMovies] = await Promise.all([
@@ -138,11 +143,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
             };
 
             // Save to cache
-            setCachedStats(userId, timeRangeStr, stats);
+            setCachedStats(user.Id, timeRangeStr, stats);
         }
 
         const rawUserImageUrl = user.PrimaryImageTag
-            ? emby.getUserImageUrl(userId)
+            ? emby.getUserImageUrl(user.Id)
             : null;
 
         // Proxy the image to avoid Local Network Access browser restrictions

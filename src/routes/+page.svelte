@@ -73,7 +73,15 @@
 	}
 
 	onMount(async () => {
-		// Initial fetch is now handled by the $: selectedTimeRange block
+		// Keep shared URLs with `user`/`username` focused on community cards first.
+		// We still preserve the prefilled username for the form, but remove it from the URL
+		// so refreshes/back-navigation don't unexpectedly re-enter prefilled mode.
+		if (data.prefilledUsername && typeof window !== "undefined") {
+			const nextUrl = new URL(window.location.href);
+			nextUrl.searchParams.delete("user");
+			nextUrl.searchParams.delete("username");
+			window.history.replaceState({}, "", nextUrl);
+		}
 	});
 
 	function handleCardChange(event: CustomEvent<{ index: number }>) {

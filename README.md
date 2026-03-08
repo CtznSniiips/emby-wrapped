@@ -16,6 +16,7 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 - **Library Filtering** - Use `FILTER_USER_ID` to restrict displayed content (e.g., to hide NSFW libraries).
 - **High-Quality Visuals** - Automatically fetches higher resolution posters and artist images.
 - **Improved Error Handling** - Robust handling of missing images and server connection issues.
+- **URL parameters** - Provide URLs with a pre-selected time-frame and user
 
 ## Screenshots
 
@@ -91,47 +92,11 @@ docker compose up -d
 
 4. Access at `http://localhost:3000`
 
-**Portainer:** In Portainer → Stacks → Add stack → paste the above compose and set your `EMBY_URL` and `EMBY_API_KEY` in the environment section.
-
-### Option 2: Build from Source
-
-1. Clone the repository:
-```bash
-git clone https://github.com/tonghongte/emby-wrapped-ftp.git
-cd emby-wrapped-ftp
-```
-
-2. Create your environment file:
-```bash
-cp .env.example .env
-```
-
-3. Edit `.env` with your Emby server details:
-```env
-EMBY_URL=http://your-emby-server:8096
-EMBY_API_KEY=your-api-key-here
-# Optional
-TMDB_API_KEY=
-PUBLIC_URL=
-```
-
-4. Build and run:
-```bash
-docker-compose up -d --build
-```
-
-5. Access at `http://localhost:3000`
-
 ### Updating
 
 **Pre-built image:**
 ```bash
 docker-compose pull && docker-compose up -d
-```
-
-**From source:**
-```bash
-git pull && docker-compose up -d --build
 ```
 
 ## Local Development
@@ -145,7 +110,7 @@ git pull && docker-compose up -d --build
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/tonghongte/emby-wrapped-ftp.git
+git clone https://github.com/ctznsniiips/emby-wrapped-ftp.git
 cd emby-wrapped-ftp
 ```
 
@@ -203,26 +168,20 @@ For Docker deployments, mount a volume to `/app/static/music/` (see docker-compo
 
 ## Usage
 
+### General use
 1. Navigate to the app in your browser
 2. Select the time period (Year or Month) you want to view
 3. Select your user from the list
 4. Enjoy your personalized Emby Wrapped experience!
 5. Use the Share button on any card to download it as an image
 
-## New in this Fork
+### URL parameters
+Provide user and time-specific URLs for your users
 
-Detailed changes can be found in the [CHANGELOG.md](CHANGELOG.md).
+Add `/username?YYYY` or `/username?MM-YYYY` to your url to pre-select the user and time period where `MM` is the 2 digit month and `YYYY` is the 4 digit year
 
-### Enhanced Music Experience
-The music summary card now features:
-- **Artist & Track Thumbnails**: Visual representation of your top music content.
-- **Proxy Handling**: All images are proxied through the server to avoid CORS issues and ensure they load correctly even if your Emby server is behind a restrictive firewall.
-- **Dynamic Placeholders**: Beautiful gradient placeholders if an image is missing.
-
-### Robust Backend
-- **Server-side Caching**: Images are cached locally to reduce load on your Emby server and improve presentation speed.
-- **Improved API Client**: Better handling of Emby's complex image API, including artist ID resolution.
-- **NSFW Filtering**: Ability to filter the entire wrapped experience through a specific user's permissions via `FILTER_USER_ID`.
+!!! example
+    `http://yourip:3000/kevin?2025` will pre-select the year 2025 review and pre-enter the username `Kevin` for user-specific stats
 
 ## Tech Stack
 

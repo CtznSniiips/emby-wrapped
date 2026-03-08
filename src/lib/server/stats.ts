@@ -200,6 +200,17 @@ function parseDateTime(date: string, time: string): Date {
     return new Date(`${date}T${time}`);
 }
 
+function formatLocalDateTime(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
 function getDateParts(dateStr: string): { year: number; month: number } | null {
     const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (dateMatch) {
@@ -488,8 +499,8 @@ export async function aggregateUserStats(userId: string, username: string, timeR
     const isEarlyBird = totalMinutes > 0 && morningMinutes > totalMinutes * 0.25;
     const isWeekendWarrior = weekdayMinutes > 0 && weekendMinutes > weekdayMinutes * (2 / 5) * 1.5;
 
-    // FIXED: Detect binge sessions - group consecutive same-show episodes within reasonable time windows
-    // A binge is 3+ UNIQUE episodes of the SAME show watched within a single day/session
+    // Detect binge sessions - group consecutive same-show episodes into contiguous sessions.
+    // A binge is 3+ UNIQUE episodes of the SAME show watched in a single session.
 
     // First, group all episodes by date and show
     const episodesByDateAndShow = new Map<string, PlaybackActivity[]>();
@@ -524,25 +535,63 @@ export async function aggregateUserStats(userId: string, username: string, timeR
             return timeA - timeB;
         });
 
-        // Calculate total duration
-        const totalSeconds = uniqueEpisodes.reduce((sum, e) => sum + parseInt(e.duration || '0', 10), 0);
-        const totalMinutes = Math.round(totalSeconds / 60);
+        // Split into contiguous sessions to avoid counting long breaks as one sitting
+        const maxBreakMinutes = 90;
+        const sessions: PlaybackActivity[][] = [];
+        let currentSession: PlaybackActivity[] = [];
 
-        // Sanity check: average at least 10 minutes per episode (shortest episodes are ~10-15 min)
-        const avgMinutesPerEp = totalMinutes / uniqueEpisodes.length;
-        if (avgMinutesPerEp < 10) continue;
+        for (const episode of uniqueEpisodes) {
+            if (currentSession.length === 0) {
+                currentSession.push(episode);
+                continue;
+            }
 
-        const firstEp = uniqueEpisodes[0];
-        const lastEp = uniqueEpisodes[uniqueEpisodes.length - 1];
+            const previousEpisode = currentSession[currentSession.length - 1];
+            const previousStart = parseDateTime(previousEpisode.date, previousEpisode.time);
+            const previousDurationSeconds = parseInt(previousEpisode.duration || '0', 10);
+            const previousEnd = new Date(previousStart.getTime() + (previousDurationSeconds * 1000));
+            const currentStart = parseDateTime(episode.date, episode.time);
 
-        bingeSessions.push({
-            showName,
-            showId,
-            episodeCount: uniqueEpisodes.length,
-            startTime: `${firstEp.date}T${firstEp.time}`,
-            endTime: `${lastEp.date}T${lastEp.time}`,
-            totalMinutes
-        });
+            const breakMinutes = (currentStart.getTime() - previousEnd.getTime()) / (1000 * 60);
+
+            if (breakMinutes <= maxBreakMinutes) {
+                currentSession.push(episode);
+            } else {
+                sessions.push(currentSession);
+                currentSession = [episode];
+            }
+        }
+
+        if (currentSession.length > 0) {
+            sessions.push(currentSession);
+        }
+
+        for (const sessionEpisodes of sessions) {
+            // Need at least 3 episodes per contiguous session to be a binge
+            if (sessionEpisodes.length < 3) continue;
+
+            const totalSeconds = sessionEpisodes.reduce((sum, e) => sum + parseInt(e.duration || '0', 10), 0);
+            const totalMinutes = Math.round(totalSeconds / 60);
+
+            // Sanity check: average at least 10 minutes per episode (shortest episodes are ~10-15 min)
+            const avgMinutesPerEp = totalMinutes / sessionEpisodes.length;
+            if (avgMinutesPerEp < 10) continue;
+
+            const firstEp = sessionEpisodes[0];
+            const lastEp = sessionEpisodes[sessionEpisodes.length - 1];
+            const lastEpStart = parseDateTime(lastEp.date, lastEp.time);
+            const lastEpDurationSeconds = parseInt(lastEp.duration || '0', 10);
+            const lastEpEnd = new Date(lastEpStart.getTime() + (lastEpDurationSeconds * 1000));
+
+            bingeSessions.push({
+                showName,
+                showId,
+                episodeCount: sessionEpisodes.length,
+                startTime: `${firstEp.date}T${firstEp.time}`,
+                endTime: formatLocalDateTime(lastEpEnd),
+                totalMinutes
+            });
+        }
     }
 
     // Find longest binge by episode count, with sanity check

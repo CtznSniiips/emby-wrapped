@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-03-08
+
+### Added
+- **URL Parameter Routing**: Added support for prefilled wrapped links using `/username?YYYY` and `/username?MM-YYYY` formats.
+- **Community-Friendly URL Flow**: Added redirect handling for legacy shorthand URLs so existing links continue to work with the newer route flow.
+
+### Changed
+- **Period Selection UX**: Updated period formatting to `MM-YYYY`, added current-year quick selection, and made wrapped period labels dynamic across the UI.
+- **Documentation Refresh**: Expanded setup and usage guidance in `README.md`, including updated container image details and URL parameter examples.
+
+### Fixed
+- **Community Stats Loading**: Resolved issues where prefilled user/time URLs could break or bypass the intended stats flow.
+- **Binge Session Accuracy**: Corrected binge card calculations to use the right session window.
+- **Year/Month Date Math**: Fixed lookback and timezone filtering issues that caused incomplete or incorrect current year/month statistics.
+- **Journey Card Content**: Corrected date parsing, subtitle formatting, and insight text issues in monthly journey cards.
+- **Yearly Stats Truncation**: Fixed data truncation caused by item detail fetch limits.
+
 ## [1.1.0] - 2026-02-04
 
 ### Added

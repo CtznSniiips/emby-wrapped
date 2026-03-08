@@ -180,7 +180,7 @@ Provide user and time-specific URLs for your users
 
 Add `/username?YYYY` or `/username?MM-YYYY` to your url to pre-select the user and time period where `MM` is the 2 digit month and `YYYY` is the 4 digit year
 
-```example
+```Example
 `http://yourip:3000/kevin?2025` will pre-select the year 2025 review and pre-enter the username `Kevin` for user-specific stats
 
 ## Tech Stack

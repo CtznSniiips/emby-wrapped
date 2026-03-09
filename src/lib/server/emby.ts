@@ -29,6 +29,17 @@ export interface PlaybackActivity {
     remote_address?: string;
     user_name: string;
     user_has_image?: boolean;
+    // Optional session progress fields (shape varies by Playback Reporting plugin versions)
+    played?: string | number | boolean;
+    played_to_completion?: string | number | boolean;
+    completed?: string | number | boolean;
+    is_completed?: string | number | boolean;
+    completion_percentage?: string | number;
+    percent_complete?: string | number;
+    position?: string | number;
+    playback_position?: string | number;
+    position_ticks?: string | number;
+    playback_position_ticks?: string | number;
 }
 
 export interface EmbyItem {

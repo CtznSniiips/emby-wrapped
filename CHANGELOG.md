@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **URL Parameter Routing**: Added support for prefilled wrapped links using `/username?YYYY` and `/username?MM-YYYY` formats.
 - **Community-Friendly URL Flow**: Added redirect handling for legacy shorthand URLs so existing links continue to work with the newer route flow.
+- **Session Completion Breakdown Card**: Added episode session classification into completed (>=90%), partial (10–89%), and quick drop (<10%), with stacked proportion visualization and a short completion insight/trend sentence.
 
 ### Changed
 - **Period Selection UX**: Updated period formatting to `MM-YYYY`, added current-year quick selection, and made wrapped period labels dynamic across the UI.

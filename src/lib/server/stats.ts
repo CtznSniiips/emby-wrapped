@@ -73,6 +73,22 @@ export interface BingeSession {
     totalMinutes: number;
 }
 
+export interface PlaybackCompletionStats {
+    completed: number;
+    partial: number;
+    quickDrop: number;
+    total: number;
+    completedPct: number;
+    partialPct: number;
+    quickDropPct: number;
+    trend: {
+        startCompletedRate: number;
+        endCompletedRate: number;
+        delta: number;
+        direction: 'up' | 'down' | 'flat';
+    };
+}
+
 export interface MusicStats {
     totalMinutes: number;
     trackCount: number;
@@ -173,6 +189,143 @@ export interface UserStats {
     // Diversity and preference ratios
     genreDiversity: number;  // 0-1, higher = more diverse viewing
     movieToTvRatio: number;  // >1 = prefers movies, <1 = prefers TV
+
+    // Playback progression quality
+    playbackCompletion: PlaybackCompletionStats;
+}
+
+function parseOptionalNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string') {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    }
+    return null;
+}
+
+function parseOptionalBoolean(value: unknown): boolean | null {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['true', 'yes', '1', 'y'].includes(normalized)) return true;
+        if (['false', 'no', '0', 'n'].includes(normalized)) return false;
+    }
+    return null;
+}
+
+function getProgressRatio(activity: PlaybackActivity): number | null {
+    const record = activity as unknown as Record<string, unknown>;
+
+    for (const key of ['played_to_completion', 'completed', 'is_completed', 'played']) {
+        const boolVal = parseOptionalBoolean(record[key]);
+        if (boolVal !== null) {
+            return boolVal ? 1 : 0;
+        }
+    }
+
+    for (const key of ['completion_percentage', 'percent_complete']) {
+        const percent = parseOptionalNumber(record[key]);
+        if (percent !== null) {
+            const normalized = percent > 1 ? percent / 100 : percent;
+            return Math.max(0, Math.min(1, normalized));
+        }
+    }
+
+    const durationSec = Math.max(1, parseInt(activity.duration || '0', 10));
+    const positionSecCandidate =
+        parseOptionalNumber(record.position) ??
+        parseOptionalNumber(record.playback_position);
+
+    if (positionSecCandidate !== null) {
+        const ratio = positionSecCandidate / durationSec;
+        if (Number.isFinite(ratio) && ratio >= 0) {
+            return Math.max(0, Math.min(1, ratio));
+        }
+    }
+
+    const positionTicks =
+        parseOptionalNumber(record.position_ticks) ??
+        parseOptionalNumber(record.playback_position_ticks);
+
+    if (positionTicks !== null) {
+        // Emby ticks are typically 10,000,000 per second.
+        const positionSec = positionTicks / 10_000_000;
+        const ratio = positionSec / durationSec;
+        if (Number.isFinite(ratio) && ratio >= 0) {
+            return Math.max(0, Math.min(1, ratio));
+        }
+    }
+
+    return null;
+}
+
+function getPlaybackCompletionStats(episodes: PlaybackActivity[], range: TimeRange): PlaybackCompletionStats {
+    const classified: { date: Date; ratio: number; bucket: number }[] = [];
+    let completed = 0;
+    let partial = 0;
+    let quickDrop = 0;
+
+    const bucketCount = range.type === 'year' ? 12 : 5;
+
+    for (const ep of episodes) {
+        const ratio = getProgressRatio(ep);
+        if (ratio === null) continue;
+
+        const dt = parseDateTime(ep.date, ep.time);
+        let bucket = 0;
+        if (range.type === 'year') {
+            bucket = dt.getMonth();
+        } else {
+            bucket = Math.min(bucketCount - 1, Math.floor((dt.getDate() - 1) / 7));
+        }
+
+        classified.push({ date: dt, ratio, bucket });
+
+        if (ratio >= 0.9) completed++;
+        else if (ratio < 0.1) quickDrop++;
+        else partial++;
+    }
+
+    const total = completed + partial + quickDrop;
+    const completedPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const partialPct = total > 0 ? Math.round((partial / total) * 100) : 0;
+    const quickDropPct = Math.max(0, 100 - completedPct - partialPct);
+
+    const bucketTotals = Array.from({ length: bucketCount }, () => ({ total: 0, completed: 0 }));
+    for (const play of classified) {
+        bucketTotals[play.bucket].total += 1;
+        if (play.ratio >= 0.9) bucketTotals[play.bucket].completed += 1;
+    }
+
+    const rates = bucketTotals
+        .filter((b) => b.total > 0)
+        .map((b) => b.completed / b.total);
+    const segmentSize = Math.max(1, Math.floor(rates.length / 3));
+    const startSlice = rates.slice(0, segmentSize);
+    const endSlice = rates.slice(-segmentSize);
+    const avg = (vals: number[]) => vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+    const startCompletedRate = avg(startSlice);
+    const endCompletedRate = avg(endSlice);
+    const delta = endCompletedRate - startCompletedRate;
+    const direction: 'up' | 'down' | 'flat' = delta > 0.03 ? 'up' : delta < -0.03 ? 'down' : 'flat';
+
+    return {
+        completed,
+        partial,
+        quickDrop,
+        total,
+        completedPct,
+        partialPct,
+        quickDropPct,
+        trend: {
+            startCompletedRate: Math.round(startCompletedRate * 100),
+            endCompletedRate: Math.round(endCompletedRate * 100),
+            delta: Math.round(delta * 100),
+            direction
+        }
+    };
 }
 
 /**
@@ -359,6 +512,8 @@ export async function aggregateUserStats(userId: string, username: string, timeR
     // Count by type - only for accessible items
     const movies = accessibleVideoActivity.filter(a => a.item_type.toLowerCase() === 'movie');
     const episodes = accessibleVideoActivity.filter(a => a.item_type.toLowerCase() === 'episode');
+
+    const playbackCompletion = getPlaybackCompletionStats(episodes, range);
 
     // Get unique items
     const uniqueMovieIds = new Set(movies.map(m => String(m.item_id)));
@@ -755,7 +910,8 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         movieToTvRatio: episodes.length > 0
             ? (movies.reduce((sum, m) => sum + parseInt(m.duration || '0', 10), 0) / 60) /
             Math.max(1, episodes.reduce((sum, e) => sum + parseInt(e.duration || '0', 10), 0) / 60)
-            : uniqueMovieIds.size > 0 ? 10 : 0  // Movie-only viewer
+            : uniqueMovieIds.size > 0 ? 10 : 0,  // Movie-only viewer
+        playbackCompletion
     };
 }
 

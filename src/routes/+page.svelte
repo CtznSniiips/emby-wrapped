@@ -44,7 +44,7 @@
 	// Server stats
 	let serverStats: any = null;
 	let statsLoading = true;
-	let showUserForm = !data.authUser;
+	let showUserForm = false;
 	let currentCardIndex = 0;
 
 	// Card phases for animations (only for cards that aren't using separate components)

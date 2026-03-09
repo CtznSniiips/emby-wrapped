@@ -5,6 +5,7 @@
 	import AudioPlayer from "$lib/components/ui/AudioPlayer.svelte";
 	import IntroCard from "$lib/components/cards/IntroCard.svelte";
 	import TotalTimeCard from "$lib/components/cards/TotalTimeCard.svelte";
+	import StreakCard from "$lib/components/cards/StreakCard.svelte";
 	import TopContentCard from "$lib/components/cards/TopContentCard.svelte";
 	import GenreCard from "$lib/components/cards/GenreCard.svelte";
 	import Top5Card from "$lib/components/cards/Top5Card.svelte";
@@ -62,7 +63,16 @@
             });
         }
 
-		// 3. Top show (if exists)
+		// 3. Streak card
+		if (stats.longestStreak > 0) {
+			cards.push({
+				type: "streak",
+				component: StreakCard,
+				props: { stats },
+			});
+		}
+
+		// 4. Top show (if exists)
 		if (stats.topShows.length > 0) {
 			cards.push({
 				type: "top_show",
@@ -71,7 +81,7 @@
 			});
 		}
 
-		// 4. Top movie (if exists)
+		// 5. Top movie (if exists)
 		if (stats.topMovies.length > 0) {
 			cards.push({
 				type: "top_movie",
@@ -80,7 +90,7 @@
 			});
 		}
 
-		// 5. Genre breakdown (if we have genres)
+		// 6. Genre breakdown (if we have genres)
 		if (stats.topGenres.length > 0) {
 			cards.push({
 				type: "genres",

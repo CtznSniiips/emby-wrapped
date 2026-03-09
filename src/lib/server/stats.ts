@@ -155,6 +155,13 @@ export interface UserStats {
     isWeekendWarrior: boolean; // Weekend > weekday viewing
 
     // Streaks and binges
+    currentStreak: number;
+    longestStreak: number;
+    currentStreakStart: string | null;
+    currentStreakEnd: string | null;
+    longestStreakStart: string | null;
+    longestStreakEnd: string | null;
+    streakTimeZone: string;
     longestBinge: BingeSession | null;
     bingeCount: number;  // Number of 3+ episode sessions
 
@@ -173,6 +180,15 @@ export interface UserStats {
     // Diversity and preference ratios
     genreDiversity: number;  // 0-1, higher = more diverse viewing
     movieToTvRatio: number;  // >1 = prefers movies, <1 = prefers TV
+}
+
+interface StreakStats {
+    currentStreak: number;
+    longestStreak: number;
+    currentStreakStart: string | null;
+    currentStreakEnd: string | null;
+    longestStreakStart: string | null;
+    longestStreakEnd: string | null;
 }
 
 /**
@@ -226,6 +242,104 @@ function getDateParts(dateStr: string): { year: number; month: number } | null {
     return {
         year: parsed.getUTCFullYear(),
         month: parsed.getUTCMonth() + 1
+    };
+}
+
+function getActiveDateKey(date: Date, timeZone: string): string {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+
+    const parts = formatter.formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+
+    if (!year || !month || !day) {
+        throw new Error(`Unable to format active date key for timezone: ${timeZone}`);
+    }
+
+    return `${year}-${month}-${day}`;
+}
+
+function getAppTimeZone(): string {
+    const configuredTimeZone = env.APP_TIMEZONE || env.TZ;
+
+    if (configuredTimeZone) {
+        try {
+            Intl.DateTimeFormat('en-US', { timeZone: configuredTimeZone });
+            return configuredTimeZone;
+        } catch {
+            console.warn(`Invalid timezone configured (${configuredTimeZone}), falling back to UTC`);
+        }
+    }
+
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+        return 'UTC';
+    }
+}
+
+function calculateStreakStats(activeDateKeys: Set<string>): StreakStats {
+    if (activeDateKeys.size === 0) {
+        return {
+            currentStreak: 0,
+            longestStreak: 0,
+            currentStreakStart: null,
+            currentStreakEnd: null,
+            longestStreakStart: null,
+            longestStreakEnd: null
+        };
+    }
+
+    const sortedDateKeys = [...activeDateKeys].sort((a, b) => a.localeCompare(b));
+    const dayNumbers = sortedDateKeys.map((dateKey) => {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        return Math.floor(Date.UTC(year, month - 1, day) / (1000 * 60 * 60 * 24));
+    });
+
+    let longestStartIdx = 0;
+    let longestEndIdx = 0;
+    let runStartIdx = 0;
+
+    for (let i = 1; i < dayNumbers.length; i++) {
+        if (dayNumbers[i] !== dayNumbers[i - 1] + 1) {
+            const currentRunLength = i - runStartIdx;
+            const longestLength = longestEndIdx - longestStartIdx + 1;
+            if (currentRunLength > longestLength) {
+                longestStartIdx = runStartIdx;
+                longestEndIdx = i - 1;
+            }
+            runStartIdx = i;
+        }
+    }
+
+    const finalRunLength = dayNumbers.length - runStartIdx;
+    const longestLength = longestEndIdx - longestStartIdx + 1;
+    if (finalRunLength > longestLength) {
+        longestStartIdx = runStartIdx;
+        longestEndIdx = dayNumbers.length - 1;
+    }
+
+    let currentStartIdx = dayNumbers.length - 1;
+    while (
+        currentStartIdx > 0
+        && dayNumbers[currentStartIdx] === dayNumbers[currentStartIdx - 1] + 1
+    ) {
+        currentStartIdx -= 1;
+    }
+
+    return {
+        currentStreak: dayNumbers.length - currentStartIdx,
+        longestStreak: longestEndIdx - longestStartIdx + 1,
+        currentStreakStart: sortedDateKeys[currentStartIdx],
+        currentStreakEnd: sortedDateKeys[dayNumbers.length - 1],
+        longestStreakStart: sortedDateKeys[longestStartIdx],
+        longestStreakEnd: sortedDateKeys[longestEndIdx]
     };
 }
 
@@ -351,6 +465,13 @@ export async function aggregateUserStats(userId: string, username: string, timeR
 
     // Filter video activity to only include items the filter user has permission to access
     const accessibleVideoActivity = videoActivity.filter(a => itemDetails.has(String(a.item_id)));
+    const streakTimeZone = getAppTimeZone();
+
+    // Build de-duplicated active dates from timestamped playback events.
+    const activeDateKeys = new Set(
+        accessibleVideoActivity.map((activity) => getActiveDateKey(parseDateTime(activity.date, activity.time), streakTimeZone))
+    );
+    const streakStats = calculateStreakStats(activeDateKeys);
 
     // Calculate total time (duration is in seconds) - only for accessible items
     const totalMinutes = Math.round(accessibleVideoActivity.reduce((sum, a) => sum + parseInt(a.duration || '0', 10), 0) / 60);
@@ -739,6 +860,13 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         isNightOwl,
         isEarlyBird,
         isWeekendWarrior,
+        currentStreak: streakStats.currentStreak,
+        longestStreak: streakStats.longestStreak,
+        currentStreakStart: streakStats.currentStreakStart,
+        currentStreakEnd: streakStats.currentStreakEnd,
+        longestStreakStart: streakStats.longestStreakStart,
+        longestStreakEnd: streakStats.longestStreakEnd,
+        streakTimeZone,
         longestBinge,
         bingeCount: bingeSessions.length,
         firstWatch,

@@ -18,6 +18,7 @@
 	import PersonalityCard from "$lib/components/cards/PersonalityCard.svelte";
 	import SeriesCompletionCard from "$lib/components/cards/SeriesCompletionCard.svelte";
 	import MusicSummaryCard from "$lib/components/cards/MusicSummaryCard.svelte";
+	import RewatchInsightsCard from "$lib/components/cards/RewatchInsightsCard.svelte";
 	import type { PageData } from "./$types";
 
 	export let data: PageData;
@@ -155,7 +156,16 @@
 			});
 		}
 
-		// 10. Day of week patterns
+		// 11. Rewatch behavior insights
+		if (stats.rewatchInsights) {
+			cards.push({
+				type: "rewatch",
+				component: RewatchInsightsCard,
+				props: { rewatch: stats.rewatchInsights },
+			});
+		}
+
+		// 12. Day of week patterns
 		if (stats.heatmap.days.some((d) => d > 0)) {
 			cards.push({
 				type: "day_of_week",
@@ -164,7 +174,7 @@
 			});
 		}
 
-		// 11. Monthly journey
+		// 13. Monthly journey
 		if (stats.heatmap.months.some((m) => m > 0)) {
 			cards.push({
 				type: "monthly",
@@ -173,7 +183,7 @@
 			});
 		}
 
-		// 11. Binge card (if we have a binge session) - moved before journey
+		// 14. Binge card (if we have a binge session) - moved before journey
 		if (stats.longestBinge) {
 			cards.push({
 				type: "binge",
@@ -185,7 +195,7 @@
 			});
 		}
 
-		// 12. First & Last watch (journey card) - NOW NEAR THE END
+		// 15. First & Last watch (journey card) - NOW NEAR THE END
 		if (stats.firstWatch && stats.lastWatch) {
 			cards.push({
 				type: "first_last",
@@ -194,7 +204,7 @@
 			});
 		}
 
-		// 13. Music summary (if we have music data)
+		// 16. Music summary (if we have music data)
 		if (stats.music && stats.music.totalMinutes > 0) {
 			cards.push({
 				type: "music",
@@ -203,7 +213,7 @@
 			});
 		}
 
-		// 14. Always end with finale
+		// 17. Always end with finale
 		cards.push({
 			type: "finale",
 			component: FinaleCard,

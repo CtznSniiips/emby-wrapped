@@ -1,7 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { emby } from '$lib/server/emby';
 import { tmdb } from '$lib/server/tmdb';
-import { aggregateUserStats, parseTimeRange, timeRangeToString, getAvailableTimeRanges, type UserStats, type TopItem, type TimeRange } from '$lib/server/stats';
+import { aggregateUserStats, parseTimeRange, timeRangeToString, getAvailableTimeRanges, type UserStats, type TopItem, type TimeRange, type SeriesCompletionStat } from '$lib/server/stats';
 import type { PageServerLoad } from './$types';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -97,6 +97,31 @@ async function enhanceTopItemImages(items: TopItem[], type: 'show' | 'movie'): P
     return enhanced;
 }
 
+
+
+async function enhanceSeriesCompletionImages(items: SeriesCompletionStat[]): Promise<SeriesCompletionStat[]> {
+    const enhanced = await Promise.all(items.map(async (item) => {
+        const hasValidEmbyId = isValidEmbyId(item.id);
+
+        if (!hasValidEmbyId) {
+            try {
+                const tmdbUrl = await tmdb.findPosterUrl(item.name, 'tv');
+                if (tmdbUrl) {
+                    return {
+                        ...item,
+                        imageUrl: tmdbUrl
+                    };
+                }
+            } catch {
+                // TMDB lookup failed, keep original
+            }
+        }
+
+        return item;
+    }));
+
+    return enhanced;
+}
 export const load: PageServerLoad = async ({ params, url }) => {
     const { userId: userIdentifier } = params;
 
@@ -143,15 +168,17 @@ export const load: PageServerLoad = async ({ params, url }) => {
             stats = await aggregateUserStats(user.Id, user.Name, timeRange);
 
             // Enhance images with TMDB fallbacks
-            const [enhancedShows, enhancedMovies] = await Promise.all([
+            const [enhancedShows, enhancedMovies, enhancedSeriesCompletion] = await Promise.all([
                 enhanceTopItemImages(stats.topShows, 'show'),
-                enhanceTopItemImages(stats.topMovies, 'movie')
+                enhanceTopItemImages(stats.topMovies, 'movie'),
+                enhanceSeriesCompletionImages(stats.seriesCompletion)
             ]);
 
             stats = {
                 ...stats,
                 topShows: enhancedShows,
-                topMovies: enhancedMovies
+                topMovies: enhancedMovies,
+                seriesCompletion: enhancedSeriesCompletion
             };
 
             // Save to cache

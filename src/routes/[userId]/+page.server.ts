@@ -109,6 +109,14 @@ export const load: PageServerLoad = async ({ params, url }) => {
         throw redirect(307, nextUrl);
     }
 
+    // Direct links like `/:userId` should open the community intro flow first,
+    // with the username prefilled for the final step.
+    const hasPeriodParam = url.searchParams.has('period');
+    if (!rawQuery && !hasPeriodParam) {
+        const nextUrl = `/?user=${encodeURIComponent(userIdentifier)}`;
+        throw redirect(307, nextUrl);
+    }
+
     // Get time range from URL parameter, default to previous year
     const now = new Date();
     const defaultTimeRange = String(now.getFullYear() - 1);

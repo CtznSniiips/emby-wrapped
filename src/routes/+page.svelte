@@ -13,6 +13,7 @@
 	export let data: PageData;
 
 	let username = "";
+	let password = "";
 	let isLoading = false;
 	let error = "";
 	let selectedTimeRange = "";
@@ -133,8 +134,8 @@
 	async function handleSubmit(event: Event) {
 		event.preventDefault();
 
-		if (!username.trim()) {
-			error = "Please enter your username";
+		if (!username.trim() || !password) {
+			error = "Please enter your username and password";
 			return;
 		}
 
@@ -142,9 +143,16 @@
 		error = "";
 
 		try {
-			const response = await fetch(
-				`/api/validate-user?username=${encodeURIComponent(username.trim())}`,
-			);
+			const response = await fetch('/api/auth/login', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					username: username.trim(),
+					password,
+				}),
+			});
 			const data = await response.json();
 
 			if (data.valid) {
@@ -157,6 +165,12 @@
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	async function logout() {
+		await fetch('/api/auth/logout', { method: 'POST' });
+		password = '';
+		error = '';
 	}
 
 	// Computed stats
@@ -215,9 +229,7 @@
 					<div class="select-arrow">{UNICODE.triangleDown}</div>
 				</div>
 
-				<p class="subtitle">
-					Enter your username to see your personal wrapped for this period
-				</p>
+				<p class="subtitle">Sign in with your Emby credentials to see your personal wrapped</p>
 			</header>
 
 			<form class="login-form" on:submit|preventDefault={handleSubmit}>
@@ -238,6 +250,21 @@
 					</div>
 				</div>
 
+				<div class="form-group">
+					<label for="password" class="label">Your password</label>
+					<div class="input-wrapper">
+						<input
+							type="password"
+							id="password"
+							bind:value={password}
+							placeholder="password"
+							autocomplete="current-password"
+							disabled={isLoading}
+							class="input"
+						/>
+					</div>
+				</div>
+
 				{#if error}
 					<p class="error">{UNICODE.sparkle} {error}</p>
 				{/if}
@@ -252,6 +279,10 @@
 						<span class="btn-icon">{UNICODE.arrow}</span>
 					{/if}
 				</button>
+
+				{#if data.authUser}
+					<button type="button" class="back-btn" on:click={logout}>Logout {data.authUser.username}</button>
+				{/if}
 			</form>
 
 			<button class="back-btn" on:click={() => (showUserForm = false)}>

@@ -18,6 +18,14 @@ export interface EmbyUser {
     PrimaryImageTag?: string;
 }
 
+export interface EmbyAuthResponse {
+    User: EmbyUser;
+    AccessToken: string;
+    SessionInfo?: {
+        Id: string;
+    };
+}
+
 export interface PlaybackActivity {
     date: string;
     time: string;
@@ -97,6 +105,30 @@ class EmbyClient {
         return response.json();
     }
 
+    private async post<T>(endpoint: string, body: unknown, params: Record<string, string> = {}): Promise<T> {
+        const url = new URL(`${this.baseUrl}${endpoint}`);
+        url.searchParams.set('api_key', this.apiKey);
+
+        for (const [key, value] of Object.entries(params)) {
+            url.searchParams.set(key, value);
+        }
+
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Emby API error: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json();
+    }
+
     /**
      * Get all users from the Emby server
      */
@@ -110,6 +142,16 @@ class EmbyClient {
     async findUserByName(username: string): Promise<EmbyUser | null> {
         const users = await this.getUsers();
         return users.find(u => u.Name.toLowerCase() === username.toLowerCase()) || null;
+    }
+
+    /**
+     * Authenticate a user with username and password against Emby
+     */
+    async authenticateByName(username: string, password: string): Promise<EmbyAuthResponse> {
+        return this.post<EmbyAuthResponse>('/Users/AuthenticateByName', {
+            Username: username,
+            Pw: password
+        });
     }
 
     /**

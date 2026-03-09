@@ -122,8 +122,14 @@ async function enhanceSeriesCompletionImages(items: SeriesCompletionStat[]): Pro
 
     return enhanced;
 }
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
     const { userId: userIdentifier } = params;
+    const requestedPeriod = url.searchParams.get('period');
+    const periodQuery = requestedPeriod ? `&period=${encodeURIComponent(requestedPeriod)}` : '';
+
+    if (!locals.authUser) {
+        throw redirect(307, `/?user=${encodeURIComponent(userIdentifier)}${periodQuery}`);
+    }
 
     // Legacy shorthand links like `/:userId?2026` should land on community stats first
     // while preserving both user and period as homepage query params.
@@ -158,6 +164,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
         if (!user) {
             throw error(404, 'User not found');
+        }
+
+        if (locals.authUser.id !== user.Id) {
+            throw redirect(307, `/${locals.authUser.id}${requestedPeriod ? `?period=${encodeURIComponent(requestedPeriod)}` : ''}`);
         }
 
         // Check cache first

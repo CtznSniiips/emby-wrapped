@@ -15,6 +15,7 @@
 	import FirstLastWatchCard from "$lib/components/cards/FirstLastWatchCard.svelte";
 	import FinaleCard from "$lib/components/cards/FinaleCard.svelte";
 	import PersonalityCard from "$lib/components/cards/PersonalityCard.svelte";
+	import SeriesCompletionCard from "$lib/components/cards/SeriesCompletionCard.svelte";
 	import MusicSummaryCard from "$lib/components/cards/MusicSummaryCard.svelte";
 	import type { PageData } from "./$types";
 
@@ -134,6 +135,15 @@
                 props: { stats },
             });
         }
+
+		// 10. Series completion insights
+		if (stats.seriesCompletion.length > 0) {
+			cards.push({
+				type: "series_completion",
+				component: SeriesCompletionCard,
+				props: { seriesCompletion: stats.seriesCompletion },
+			});
+		}
 
 		// 10. Day of week patterns
 		if (stats.heatmap.days.some((d) => d > 0)) {

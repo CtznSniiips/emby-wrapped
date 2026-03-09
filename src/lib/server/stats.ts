@@ -52,6 +52,16 @@ export interface TopItem {
     seriesId?: string;
 }
 
+export interface SeriesCompletionStat {
+    id: string;
+    name: string;
+    imageUrl: string;
+    watchedEpisodes: number;
+    totalEpisodes: number;
+    completionPercentage: number;
+    minutes: number;
+}
+
 export interface GenreStat {
     name: string;
     minutes: number;
@@ -140,6 +150,7 @@ export interface UserStats {
     // Top content
     topMovies: TopItem[];
     topShows: TopItem[];
+    seriesCompletion: SeriesCompletionStat[];
     topGenres: GenreStat[];
     totalGenresExplored: number;  // Total count before slicing to top 8
 
@@ -458,6 +469,54 @@ export async function aggregateUserStats(userId: string, username: string, timeR
             };
         });
 
+
+
+    const minSeriesEpisodes = 5;
+    const seriesCompletionCandidates = [...showStats.values()]
+        .filter((stats) => !!stats.seriesId)
+        .map((stats) => ({
+            id: stats.seriesId!,
+            name: stats.name,
+            watchedEpisodes: stats.episodes.size,
+            minutes: Math.round(stats.minutes)
+        }));
+
+    const seriesEpisodeTotals = new Map<string, number>();
+    await Promise.all(seriesCompletionCandidates.map(async (series) => {
+        if (seriesEpisodeTotals.has(series.id)) return;
+        try {
+            const total = await emby.getSeriesEpisodeCount(filterUserId, series.id);
+            seriesEpisodeTotals.set(series.id, total);
+        } catch {
+            seriesEpisodeTotals.set(series.id, 0);
+        }
+    }));
+
+    const seriesCompletion: SeriesCompletionStat[] = seriesCompletionCandidates
+        .map((series) => {
+            const totalEpisodes = seriesEpisodeTotals.get(series.id) || 0;
+            const completionPercentage = totalEpisodes > 0
+                ? Math.min(100, Math.round((series.watchedEpisodes / totalEpisodes) * 100))
+                : 0;
+
+            return {
+                id: series.id,
+                name: series.name,
+                imageUrl: emby.getImageUrl(series.id, 'Primary', 400),
+                watchedEpisodes: series.watchedEpisodes,
+                totalEpisodes,
+                completionPercentage,
+                minutes: series.minutes
+            };
+        })
+        .filter((series) => series.totalEpisodes >= minSeriesEpisodes)
+        .sort((a, b) => {
+            if (b.completionPercentage !== a.completionPercentage) {
+                return b.completionPercentage - a.completionPercentage;
+            }
+            return b.watchedEpisodes - a.watchedEpisodes;
+        });
+
     // Build genre stats - show AT LEAST 5 genres (topGenres is for display, totalGenresExplored is for stats)
     const totalGenresExplored = genreMinutes.size;
     const totalGenreMinutes = [...genreMinutes.values()].reduce((a, b) => a + b, 0) || 1;
@@ -726,6 +785,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         uniqueMovies: uniqueMovieIds.size,
         topMovies,
         topShows,
+        seriesCompletion,
         topGenres,
         totalGenresExplored,
         heatmap: {

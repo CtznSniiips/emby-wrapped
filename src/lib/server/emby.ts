@@ -175,6 +175,24 @@ class EmbyClient {
     getUserImageUrl(userId: string, maxWidth: number = 200): string {
         return `${this.baseUrl}/Users/${userId}/Images/Primary?maxWidth=${maxWidth}&api_key=${this.apiKey}`;
     }
+
+    /**
+     * Get total episode count for a series
+     */
+    async getSeriesEpisodeCount(userId: string, seriesId: string): Promise<number> {
+        interface ItemsResponse {
+            TotalRecordCount: number;
+        }
+
+        const response = await this.fetch<ItemsResponse>(`/Users/${userId}/Items`, {
+            ParentId: seriesId,
+            IncludeItemTypes: 'Episode',
+            Recursive: 'true',
+            Limit: '1'
+        });
+
+        return response.TotalRecordCount || 0;
+    }
 }
 
 // Export singleton instance

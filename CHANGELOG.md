@@ -9,7 +9,6 @@ All notable changes to this project will be documented in this file.
 - **Community-Friendly URL Flow**: Added redirect handling for legacy shorthand URLs so existing links continue to work with the newer route flow.
 - **Viewing Streaks Card**: Added timezone-aware current/longest streak analytics from de-duplicated playback dates and surfaced them in a dedicated wrapped card.
 - **Series Completion Insights**: Added per-series completion metrics (watched/total/%), filtered out tiny series (<5 episodes), and introduced a new completion card with top-ranked and nearly-finished sections.
-- **Rewatch Insights Card**: Added playback-history rewatch analytics with a dedicated wrapped card for rewatch index, top rewatched titles, and per-media-type repeat splits when repeat behavior is available.
 
 ### Changed
 - **Period Selection UX**: Updated period formatting to `MM-YYYY`, added current-year quick selection, and made wrapped period labels dynamic across the UI.

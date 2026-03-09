@@ -91,31 +91,6 @@ export interface MusicStats {
     topTracks: { name: string; artist: string; minutes: number; count: number; imageUrl?: string }[];
 }
 
-export interface RewatchTitleStat {
-    id: string;
-    name: string;
-    imageUrl: string;
-    type: string;
-    totalPlays: number;
-    repeatPlays: number;
-}
-
-export interface RewatchMediaTypeSplit {
-    type: string;
-    repeatPlays: number;
-    repeatedTitles: number;
-    totalPlays: number;
-}
-
-export interface RewatchInsights {
-    rewatchIndex: number;
-    repeatPlays: number;
-    totalPlays: number;
-    repeatedTitles: number;
-    topRewatchedTitles: RewatchTitleStat[];
-    mediaTypeSplits: RewatchMediaTypeSplit[];
-}
-
 export interface FullMusicStats {
     userId: string;
     username: string;
@@ -216,9 +191,6 @@ export interface UserStats {
     // Diversity and preference ratios
     genreDiversity: number;  // 0-1, higher = more diverse viewing
     movieToTvRatio: number;  // >1 = prefers movies, <1 = prefers TV
-
-    // Repeat behavior
-    rewatchInsights: RewatchInsights | null;
 }
 
 interface StreakStats {
@@ -919,82 +891,6 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         };
     }
 
-    const rewatchByItem = new Map<string, { name: string; type: string; totalPlays: number; imageUrl: string }>();
-    const rewatchTypeMap = new Map<string, { repeatPlays: number; repeatedTitles: number; totalPlays: number }>();
-    let repeatPlays = 0;
-
-    for (const activity of accessibleVideoActivity) {
-        const itemId = String(activity.item_id);
-        const type = activity.item_type.toLowerCase();
-        const item = itemDetails.get(itemId);
-        const imageId = type === 'episode' && item?.SeriesId ? item.SeriesId : itemId;
-        const name = type === 'episode' && item?.SeriesName
-            ? item.SeriesName
-            : activity.item_name.split(' - ')[0] || activity.item_name;
-
-        const existing = rewatchByItem.get(itemId) || {
-            name,
-            type,
-            totalPlays: 0,
-            imageUrl: emby.getImageUrl(imageId, 'Primary', 400)
-        };
-        existing.totalPlays += 1;
-        rewatchByItem.set(itemId, existing);
-
-        const typeTotals = rewatchTypeMap.get(type) || { repeatPlays: 0, repeatedTitles: 0, totalPlays: 0 };
-        typeTotals.totalPlays += 1;
-        rewatchTypeMap.set(type, typeTotals);
-    }
-
-    const topRewatchedTitles: RewatchTitleStat[] = [];
-
-    for (const [_, stat] of rewatchByItem.entries()) {
-        if (stat.totalPlays < 2) continue;
-
-        const itemRepeatPlays = stat.totalPlays - 1;
-        repeatPlays += itemRepeatPlays;
-
-        const typeTotals = rewatchTypeMap.get(stat.type);
-        if (typeTotals) {
-            typeTotals.repeatPlays += itemRepeatPlays;
-            typeTotals.repeatedTitles += 1;
-            rewatchTypeMap.set(stat.type, typeTotals);
-        }
-
-        topRewatchedTitles.push({
-            id: `${stat.type}:${stat.name}`,
-            name: stat.name,
-            type: stat.type,
-            imageUrl: stat.imageUrl,
-            totalPlays: stat.totalPlays,
-            repeatPlays: itemRepeatPlays
-        });
-    }
-
-    topRewatchedTitles.sort((a, b) => {
-        if (b.repeatPlays !== a.repeatPlays) return b.repeatPlays - a.repeatPlays;
-        return b.totalPlays - a.totalPlays;
-    });
-
-    const rewatchInsights: RewatchInsights | null = repeatPlays > 0
-        ? {
-            rewatchIndex: Math.round((repeatPlays / Math.max(1, accessibleVideoActivity.length)) * 100),
-            repeatPlays,
-            totalPlays: accessibleVideoActivity.length,
-            repeatedTitles: topRewatchedTitles.length,
-            topRewatchedTitles: topRewatchedTitles.slice(0, 5),
-            mediaTypeSplits: [...rewatchTypeMap.entries()]
-                .map(([type, totals]) => ({
-                    type,
-                    repeatPlays: totals.repeatPlays,
-                    repeatedTitles: totals.repeatedTitles,
-                    totalPlays: totals.totalPlays
-                }))
-                .filter((split) => split.repeatPlays > 0)
-                .sort((a, b) => b.repeatPlays - a.repeatPlays)
-        }
-        : null;
-
     return {
         userId,
         username,
@@ -1047,8 +943,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         movieToTvRatio: episodes.length > 0
             ? (movies.reduce((sum, m) => sum + parseInt(m.duration || '0', 10), 0) / 60) /
             Math.max(1, episodes.reduce((sum, e) => sum + parseInt(e.duration || '0', 10), 0) / 60)
-            : uniqueMovieIds.size > 0 ? 10 : 0,  // Movie-only viewer
-        rewatchInsights
+            : uniqueMovieIds.size > 0 ? 10 : 0  // Movie-only viewer
     };
 }
 

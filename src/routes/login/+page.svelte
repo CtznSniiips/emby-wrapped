@@ -32,7 +32,7 @@
             if (response.ok && payload.valid) {
                 const query = new URLSearchParams();
                 if (data.prefilledPeriod) query.set('period', data.prefilledPeriod);
-                await goto(`/${query.toString() ? `?${query.toString()}` : ''}`);
+                await goto(`/${query.toString() ? `?${query.toString()}` : ''}`, { invalidateAll: true });
                 return;
             }
 

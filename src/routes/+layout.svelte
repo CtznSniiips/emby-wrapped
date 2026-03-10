@@ -24,7 +24,9 @@
 </svelte:head>
 
 <div class="app">
-	<AudioPlayer />
+	{#if data.isAuthenticated}
+		<AudioPlayer />
+	{/if}
 	<slot />
 </div>
 

@@ -17,6 +17,7 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 - **High-Quality Visuals** - Automatically fetches higher resolution posters and artist images.
 - **Improved Error Handling** - Robust handling of missing images and server connection issues.
 - **URL parameters** - Provide URLs with a pre-selected time-frame and user
+- **Emby authentication** - Added security via Emby authentication. Users must log in to see stats
 
 ## Screenshots
 
@@ -176,12 +177,12 @@ For Docker deployments, mount a volume to `/app/static/music/` (see docker-compo
 5. Use the Share button on any card to download it as an image
 
 ### URL parameters
-Provide user and time-specific URLs for your users
+Provide time-specific URLs for your users
 
-Add `/username?YYYY` or `/username?MM-YYYY` to your url to pre-select the user and time period where `MM` is the 2 digit month and `YYYY` is the 4 digit year
+Add `?YYYY` or `?MM-YYYY` to your url to pre-select the time period where `MM` is the 2 digit month and `YYYY` is the 4 digit year
 
 #### Example
-> `http://yourip:3000/kevin?2025` - will pre-select the year 2025 review and pre-enter the username `Kevin` for user-specific stats
+> `http://yourip:3000?2025` - will pre-select the year 2025 review after the user logs in
 
 ## Tech Stack
 

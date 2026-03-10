@@ -131,7 +131,7 @@
                 {#if isLoading}
                     <span class="loading-dots"><span>·</span><span>·</span><span>·</span></span>
                 {:else}
-                    <span>Continue to community wrapped</span>
+                    <span>Let's go</span>
                     <span class="btn-icon">{UNICODE.arrow}</span>
                 {/if}
             </button>

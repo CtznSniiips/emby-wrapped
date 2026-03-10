@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { goto } from "$app/navigation";
+	import { goto, invalidateAll } from "$app/navigation";
 	import { UNICODE, formatDuration } from "$lib/utils/format";
 	import CardStack from "$lib/components/CardStack.svelte";
 	import ProgressDots from "$lib/components/ui/ProgressDots.svelte";
@@ -147,6 +147,7 @@
 
 			if (response.ok && data.valid) {
 				authenticatedUser = { userId: data.userId, username: data.username };
+				await invalidateAll();
 			} else {
 				error = data.error || "User not found on this server";
 			}

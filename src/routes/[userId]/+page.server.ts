@@ -130,7 +130,7 @@ export const load: PageServerLoad = async ({ params, url, cookies }) => {
     const session = getAuthSession(cookies);
 
     if (!session) {
-        const nextUrl = periodParam ? `/?period=${encodeURIComponent(periodParam)}` : '/';
+        const nextUrl = periodParam ? `/login?period=${encodeURIComponent(periodParam)}` : '/login';
         throw redirect(307, nextUrl);
     }
 

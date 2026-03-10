@@ -7,16 +7,14 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
     const periodParam = url.searchParams.get('period') || '';
     const session = getAuthSession(cookies);
 
-    if (!session) {
+    if (session) {
         const query = new URLSearchParams();
         if (periodParam) query.set('period', periodParam);
-        throw redirect(307, `/login${query.toString() ? `?${query.toString()}` : ''}`);
+        throw redirect(307, `/${query.toString() ? `?${query.toString()}` : ''}`);
     }
 
     return {
         timeRangeOptions: getAvailableTimeRanges(),
-        prefilledUsername: session.username,
-        prefilledPeriod: periodParam,
-        authenticatedUser: session
+        prefilledPeriod: periodParam
     };
 };

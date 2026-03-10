@@ -1,10 +1,10 @@
 import type { PageServerLoad } from './$types';
-import { getAvailableTimeRanges } from '$lib/server/stats';
 import { getAuthSession } from '$lib/server/auth';
+import { getRequestedPeriod } from '$lib/server/period';
 import { redirect } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ url, cookies }) => {
-    const periodParam = url.searchParams.get('period') || '';
+    const periodParam = getRequestedPeriod(url);
     const session = getAuthSession(cookies);
 
     if (session) {
@@ -14,7 +14,6 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
     }
 
     return {
-        timeRangeOptions: getAvailableTimeRanges(),
         prefilledPeriod: periodParam
     };
 };

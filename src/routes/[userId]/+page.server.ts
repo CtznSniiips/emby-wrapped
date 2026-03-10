@@ -2,6 +2,7 @@ import { error, redirect } from '@sveltejs/kit';
 import { emby } from '$lib/server/emby';
 import { tmdb } from '$lib/server/tmdb';
 import { getAuthSession } from '$lib/server/auth';
+import { getRequestedPeriod } from '$lib/server/period';
 import { aggregateUserStats, parseTimeRange, timeRangeToString, getAvailableTimeRanges, type UserStats, type TopItem, type TimeRange, type SeriesCompletionStat } from '$lib/server/stats';
 import type { PageServerLoad } from './$types';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -125,7 +126,7 @@ async function enhanceSeriesCompletionImages(items: SeriesCompletionStat[]): Pro
 }
 export const load: PageServerLoad = async ({ params, url, cookies }) => {
     const { userId: userIdentifier } = params;
-    const periodParam = url.searchParams.get('period');
+    const periodParam = getRequestedPeriod(url) || null;
 
     const session = getAuthSession(cookies);
 

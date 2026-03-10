@@ -427,16 +427,27 @@ export function calculateLookbackDays(range: TimeRange): number {
 
 
 function normalizeDeviceClient(activity: PlaybackActivity): string {
+    const isUnknownValue = (value: string): boolean => {
+        const normalized = value.trim().toLowerCase();
+        return normalized.length === 0
+            || normalized === 'unknown'
+            || normalized === 'unknown client'
+            || normalized === 'unknown device'
+            || normalized === 'n/a'
+            || normalized === 'na'
+            || normalized === '-';
+    };
+
     const rawCandidates = [
-        activity.client_name,
-        activity.client,
         activity.device_name,
         activity.device,
+        activity.client_name,
+        activity.client,
         activity.app_name,
         activity.app
     ];
 
-    const raw = rawCandidates.find((value) => typeof value === 'string' && value.trim().length > 0)?.trim();
+    const raw = rawCandidates.find((value) => typeof value === 'string' && !isUnknownValue(value))?.trim();
     if (!raw) return 'Unknown Client';
 
     const lower = raw.toLowerCase();

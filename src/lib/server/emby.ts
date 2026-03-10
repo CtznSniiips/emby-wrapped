@@ -97,6 +97,29 @@ class EmbyClient {
         return response.json();
     }
 
+    private async post<T>(endpoint: string, body: Record<string, string>): Promise<T> {
+        const url = new URL(`${this.baseUrl}${endpoint}`);
+
+        if (this.apiKey) {
+            url.searchParams.set('api_key', this.apiKey);
+        }
+
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Emby API error: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json();
+    }
+
     /**
      * Get all users from the Emby server
      */
@@ -110,6 +133,19 @@ class EmbyClient {
     async findUserByName(username: string): Promise<EmbyUser | null> {
         const users = await this.getUsers();
         return users.find(u => u.Name.toLowerCase() === username.toLowerCase()) || null;
+    }
+
+    async authenticateUser(username: string, password: string): Promise<EmbyUser | null> {
+        interface AuthResponse {
+            User?: EmbyUser;
+        }
+
+        const response = await this.post<AuthResponse>('/Users/AuthenticateByName', {
+            Username: username,
+            Pw: password
+        });
+
+        return response.User || null;
     }
 
     /**

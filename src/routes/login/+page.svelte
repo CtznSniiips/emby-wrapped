@@ -6,6 +6,7 @@
     export let data: PageData;
 
     let username = '';
+    let password = '';
     let isLoading = false;
     let error = '';
     let selectedTimeRange = '';
@@ -23,8 +24,8 @@
     async function handleSubmit(event: Event) {
         event.preventDefault();
 
-        if (!username.trim()) {
-            error = 'Please enter your username';
+        if (!username.trim() || !password) {
+            error = 'Please enter your username and password';
             return;
         }
 
@@ -35,7 +36,7 @@
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: username.trim() })
+                body: JSON.stringify({ username: username.trim(), password })
             });
             const payload = await response.json();
 
@@ -46,7 +47,7 @@
                 return;
             }
 
-            error = payload.error || 'User not found on this server';
+            error = payload.error || 'Invalid username or password';
         } catch {
             error = 'Failed to connect to server';
         } finally {
@@ -85,7 +86,7 @@
             </div>
 
             <p class="subtitle">
-                Log in with your Emby username to continue to the community stats flow.
+                Log in with your Emby username and password to continue to the community stats flow.
             </p>
         </header>
 
@@ -101,6 +102,21 @@
                         autocomplete="username"
                         autocapitalize="none"
                         spellcheck="false"
+                        disabled={isLoading}
+                        class="input"
+                    />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="label">Your password</label>
+                <div class="input-wrapper">
+                    <input
+                        type="password"
+                        id="password"
+                        bind:value={password}
+                        placeholder="password"
+                        autocomplete="current-password"
                         disabled={isLoading}
                         class="input"
                     />

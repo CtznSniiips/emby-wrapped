@@ -9,17 +9,6 @@
     let password = '';
     let isLoading = false;
     let error = '';
-    let selectedTimeRange = '';
-
-    $: if (data.timeRangeOptions?.length > 0 && !selectedTimeRange) {
-        const hasPrefilledPeriod = data.prefilledPeriod
-            ? data.timeRangeOptions.some((option) => option.value === data.prefilledPeriod)
-            : false;
-
-        selectedTimeRange = hasPrefilledPeriod
-            ? data.prefilledPeriod
-            : data.timeRangeOptions[0].value;
-    }
 
     async function handleSubmit(event: Event) {
         event.preventDefault();
@@ -42,7 +31,7 @@
 
             if (response.ok && payload.valid) {
                 const query = new URLSearchParams();
-                if (selectedTimeRange) query.set('period', selectedTimeRange);
+                if (data.prefilledPeriod) query.set('period', data.prefilledPeriod);
                 await goto(`/${query.toString() ? `?${query.toString()}` : ''}`);
                 return;
             }
@@ -75,15 +64,6 @@
             <h1 class="title font-display">
                 Sign in to EmbyWrapped
             </h1>
-
-            <div class="time-selector-wrapper">
-                <select bind:value={selectedTimeRange} class="time-select">
-                    {#each data.timeRangeOptions as option}
-                        <option value={option.value}>{option.label}</option>
-                    {/each}
-                </select>
-                <div class="select-arrow">{UNICODE.triangleDown}</div>
-            </div>
 
             <p class="subtitle">
                 Log in with your Emby username and password to continue
@@ -196,28 +176,6 @@
         margin-top: 1rem;
     }
 
-    .time-selector-wrapper {
-        position: relative;
-        width: fit-content;
-        margin: 0 auto;
-    }
-
-    .time-select {
-        appearance: none;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        color: var(--color-text-primary);
-        border-radius: 999px;
-        padding: 0.5rem 2rem 0.5rem 1rem;
-    }
-
-    .select-arrow {
-        position: absolute;
-        right: 0.75rem;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-    }
 
     .login-form {
         background: rgba(18, 18, 18, 0.75);

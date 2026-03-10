@@ -8,6 +8,7 @@
 	import StreakCard from "$lib/components/cards/StreakCard.svelte";
 	import TopContentCard from "$lib/components/cards/TopContentCard.svelte";
 	import GenreCard from "$lib/components/cards/GenreCard.svelte";
+	import DeviceClientCard from "$lib/components/cards/DeviceClientCard.svelte";
 	import Top5Card from "$lib/components/cards/Top5Card.svelte";
 	import WatchingClockCard from "$lib/components/cards/WatchingClockCard.svelte";
 	import DayOfWeekCard from "$lib/components/cards/DayOfWeekCard.svelte";
@@ -99,6 +100,16 @@
 				props: { genres: stats.topGenres },
 			});
 		}
+
+		// 6b. Device/client breakdown
+		if (stats.deviceClientBreakdown.length > 0) {
+			cards.push({
+				type: "device_client",
+				component: DeviceClientCard,
+				props: { deviceClientBreakdown: stats.deviceClientBreakdown },
+			});
+		}
+
 
 		// 6. Top 5 shows (if we have enough) - pass actual count
 		if (stats.topShows.length >= 3) {

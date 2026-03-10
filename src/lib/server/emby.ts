@@ -29,6 +29,13 @@ export interface PlaybackActivity {
     remote_address?: string;
     user_name: string;
     user_has_image?: boolean;
+    client?: string;
+    client_name?: string;
+    device?: string;
+    device_name?: string;
+    app?: string;
+    app_name?: string;
+    [key: string]: string | number | boolean | undefined;
 }
 
 export interface EmbyItem {

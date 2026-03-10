@@ -68,6 +68,13 @@ export interface GenreStat {
     percentage: number;
 }
 
+export interface DeviceClientStat {
+    name: string;
+    minutes: number;
+    count: number;
+    percentage: number;
+}
+
 export interface HeatmapData {
     hours: number[];   // 24 values (0-23)
     days: number[];    // 7 values (Sun-Sat)
@@ -152,6 +159,7 @@ export interface UserStats {
     topShows: TopItem[];
     seriesCompletion: SeriesCompletionStat[];
     topGenres: GenreStat[];
+    deviceClientBreakdown: DeviceClientStat[];
     totalGenresExplored: number;  // Total count before slicing to top 8
 
     // Temporal patterns
@@ -417,6 +425,37 @@ export function calculateLookbackDays(range: TimeRange): number {
     return Math.max(31, diffDays + 14);
 }
 
+
+function normalizeDeviceClient(activity: PlaybackActivity): string {
+    const rawCandidates = [
+        activity.client_name,
+        activity.client,
+        activity.device_name,
+        activity.device,
+        activity.app_name,
+        activity.app
+    ];
+
+    const raw = rawCandidates.find((value) => typeof value === 'string' && value.trim().length > 0)?.trim();
+    if (!raw) return 'Unknown Client';
+
+    const lower = raw.toLowerCase();
+    if (lower.includes('android tv') || lower.includes('fire tv') || lower.includes('roku') || lower.includes('tizen') || lower.includes('webos') || lower.includes('appletv') || lower.includes('apple tv') || lower.includes('smart tv')) {
+        return 'TV App';
+    }
+    if (lower.includes('android') || lower.includes('iphone') || lower.includes('ipad') || lower.includes('ios') || lower.includes('mobile')) {
+        return 'Mobile App';
+    }
+    if (lower.includes('chrome') || lower.includes('firefox') || lower.includes('safari') || lower.includes('edge') || lower.includes('browser') || lower.includes('web')) {
+        return 'Web Browser';
+    }
+    if (lower.includes('emby theater') || lower.includes('desktop') || lower.includes('windows') || lower.includes('mac') || lower.includes('linux')) {
+        return 'Desktop App';
+    }
+
+    return raw;
+}
+
 /**
  * Aggregate playback data into user stats
  */
@@ -648,6 +687,27 @@ export async function aggregateUserStats(userId: string, username: string, timeR
             name,
             minutes: Math.round(minutes),
             percentage: Math.round((minutes / totalGenreMinutes) * 100)
+        }));
+
+    const deviceClientMinutes = new Map<string, { minutes: number; count: number }>();
+    for (const activity of accessibleVideoActivity) {
+        const deviceClient = normalizeDeviceClient(activity);
+        const minutes = parseInt(activity.duration || '0', 10) / 60;
+        const existing = deviceClientMinutes.get(deviceClient) || { minutes: 0, count: 0 };
+        existing.minutes += minutes;
+        existing.count += 1;
+        deviceClientMinutes.set(deviceClient, existing);
+    }
+
+    const totalDeviceClientMinutes = [...deviceClientMinutes.values()].reduce((sum, entry) => sum + entry.minutes, 0) || 1;
+    const deviceClientBreakdown = [...deviceClientMinutes.entries()]
+        .sort((a, b) => b[1].minutes - a[1].minutes)
+        .slice(0, 6)
+        .map(([name, stats]) => ({
+            name,
+            minutes: Math.round(stats.minutes),
+            count: stats.count,
+            percentage: Math.round((stats.minutes / totalDeviceClientMinutes) * 100)
         }));
 
     // Calculate heatmaps - only for accessible items
@@ -908,6 +968,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         topShows,
         seriesCompletion,
         topGenres,
+        deviceClientBreakdown,
         totalGenresExplored,
         heatmap: {
             hours: hours.map(h => Math.round(h)),

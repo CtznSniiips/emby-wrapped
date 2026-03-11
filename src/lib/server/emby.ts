@@ -244,7 +244,9 @@ class EmbyClient {
                     'Duration',
                     'TotalDuration',
                     'PlayDuration',
-                    'TotalPlayDuration'
+                    'TotalPlayDuration',
+                    'time',
+                    'Time'
                 ]);
                 const count = Math.round(readNumber(record, ['count', 'Count', 'PlaybackCount', 'Plays', 'Items']));
 

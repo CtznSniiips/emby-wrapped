@@ -429,13 +429,17 @@ export function calculateLookbackDays(range: TimeRange): number {
 function normalizeDeviceClient(activity: PlaybackActivity): string {
     const isUnknownValue = (value: string): boolean => {
         const normalized = value.trim().toLowerCase();
+        const compact = normalized.replace(/[^a-z0-9]/g, '');
         return normalized.length === 0
-            || normalized === 'unknown'
-            || normalized === 'unknown client'
-            || normalized === 'unknown device'
-            || normalized === 'n/a'
-            || normalized === 'na'
-            || normalized === '-';
+            || compact === 'unknown'
+            || compact === 'unknownclient'
+            || compact === 'unknowndevice'
+            || compact === 'na'
+            || compact === 'none'
+            || compact === 'null'
+            || compact === 'undefined'
+            || normalized === '-'
+            || normalized.includes('unknown');
     };
 
     const rawCandidates = [
@@ -710,10 +714,17 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         deviceClientMinutes.set(deviceClient, existing);
     }
 
-    const totalDeviceClientMinutes = [...deviceClientMinutes.values()].reduce((sum, entry) => sum + entry.minutes, 0) || 1;
-    const deviceClientBreakdown = [...deviceClientMinutes.entries()]
+    const unknownLabels = new Set(['unknown client', 'unknown device', 'unknown']);
+    const hasKnownDeviceClient = [...deviceClientMinutes.keys()]
+        .some((name) => !unknownLabels.has(name.trim().toLowerCase()));
+
+    const sortedDeviceClientEntries = [...deviceClientMinutes.entries()]
+        .filter(([name]) => !hasKnownDeviceClient || !unknownLabels.has(name.trim().toLowerCase()))
         .sort((a, b) => b[1].minutes - a[1].minutes)
-        .slice(0, 6)
+        .slice(0, 6);
+
+    const totalDeviceClientMinutes = sortedDeviceClientEntries.reduce((sum, [, entry]) => sum + entry.minutes, 0) || 1;
+    const deviceClientBreakdown = sortedDeviceClientEntries
         .map(([name, stats]) => ({
             name,
             minutes: Math.round(stats.minutes),

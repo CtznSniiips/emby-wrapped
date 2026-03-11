@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { emby, type PlaybackActivity, type EmbyItem } from './emby';
+import { emby, type PlaybackActivity, type EmbyItem, type DeviceBreakdownEntry } from './emby';
 
 export interface TimeRange {
     type: 'year' | 'month';
@@ -691,13 +691,47 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         }));
 
     const deviceClientMinutes = new Map<string, { minutes: number; count: number }>();
-    for (const activity of accessibleVideoActivity) {
-        const deviceClient = normalizeDeviceClient(activity);
-        const minutes = parseInt(activity.duration || '0', 10) / 60;
-        const existing = deviceClientMinutes.get(deviceClient) || { minutes: 0, count: 0 };
-        existing.minutes += minutes;
-        existing.count += 1;
-        deviceClientMinutes.set(deviceClient, existing);
+
+    const ingestDeviceRows = (rows: DeviceBreakdownEntry[]): void => {
+        for (const row of rows) {
+            const normalizedName = normalizeDeviceClient({
+                date: '',
+                time: '',
+                user_id: userId,
+                item_name: '',
+                item_id: 0,
+                item_type: '',
+                duration: String(Math.round(row.minutes * 60)),
+                user_name: username,
+                device_name: row.name
+            });
+            const existing = deviceClientMinutes.get(normalizedName) || { minutes: 0, count: 0 };
+            existing.minutes += row.minutes;
+            existing.count += row.count;
+            deviceClientMinutes.set(normalizedName, existing);
+        }
+    };
+
+    let usedBreakdownReport = false;
+    try {
+        const reportRows = await emby.getDeviceNameBreakdown(userId, daysToFetch);
+        if (reportRows.length > 0) {
+            ingestDeviceRows(reportRows);
+            usedBreakdownReport = true;
+        }
+    } catch (error) {
+        console.warn('Failed to fetch device breakdown report, falling back to playback events:', error);
+    }
+
+    if (!usedBreakdownReport) {
+        for (const activity of accessibleVideoActivity) {
+            const deviceClient = normalizeDeviceClient(activity);
+            const minutes = parseInt(activity.duration || '0', 10) / 60;
+            const existing = deviceClientMinutes.get(deviceClient) || { minutes: 0, count: 0 };
+            existing.minutes += minutes;
+            existing.count += 1;
+            deviceClientMinutes.set(deviceClient, existing);
+        }
     }
 
     const unknownLabels = new Set(['unknown client', 'unknown device', 'unknown']);

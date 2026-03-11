@@ -452,21 +452,7 @@ function normalizeDeviceClient(activity: PlaybackActivity): string {
     ];
 
     const raw = rawCandidates.find((value) => typeof value === 'string' && !isUnknownValue(value))?.trim();
-    if (!raw) return 'Unknown Client';
-
-    const lower = raw.toLowerCase();
-    if (lower.includes('android tv') || lower.includes('fire tv') || lower.includes('roku') || lower.includes('tizen') || lower.includes('webos') || lower.includes('appletv') || lower.includes('apple tv') || lower.includes('smart tv')) {
-        return 'TV App';
-    }
-    if (lower.includes('android') || lower.includes('iphone') || lower.includes('ipad') || lower.includes('ios') || lower.includes('mobile')) {
-        return 'Mobile App';
-    }
-    if (lower.includes('chrome') || lower.includes('firefox') || lower.includes('safari') || lower.includes('edge') || lower.includes('browser') || lower.includes('web')) {
-        return 'Web Browser';
-    }
-    if (lower.includes('emby theater') || lower.includes('desktop') || lower.includes('windows') || lower.includes('mac') || lower.includes('linux')) {
-        return 'Desktop App';
-    }
+    if (!raw) return 'Unknown Device';
 
     return raw;
 }

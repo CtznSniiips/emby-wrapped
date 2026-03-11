@@ -1,9 +1,9 @@
-
 import type { RequestHandler } from './$types';
 import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { env } from '$env/dynamic/private';
+import { getAuthSession } from '$lib/server/auth';
 
 // Use /tmp for cache to work with read-only filesystem in Docker
 const CACHE_DIR = process.env.NODE_ENV === 'production' ? '/tmp/image-cache' : '.cache/images';

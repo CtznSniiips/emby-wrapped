@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { emby } from '$lib/server/emby';
 import type { RequestHandler } from './$types';
+import { getAuthSession } from '$lib/server/auth';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
     const session = getAuthSession(cookies);

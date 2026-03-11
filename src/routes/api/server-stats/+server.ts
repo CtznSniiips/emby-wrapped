@@ -4,6 +4,7 @@ import { tmdb } from '$lib/server/tmdb';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { parseTimeRange, timeRangeToString, calculateLookbackDays, matchesTimeRange, type TopItem, type MusicStats } from '$lib/server/stats';
+import { getAuthSession } from '$lib/server/auth';
 
 export interface ServerStats {
     totalUsers: number;

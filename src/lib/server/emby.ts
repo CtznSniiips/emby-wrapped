@@ -39,6 +39,13 @@ export interface PlaybackActivity {
 }
 
 type RawPlaybackActivity = Record<string, string | number | boolean | undefined>;
+type RawBreakdownRecord = Record<string, string | number | boolean | undefined>;
+
+export interface DeviceBreakdownEntry {
+    name: string;
+    minutes: number;
+    count: number;
+}
 
 function readFirstString(record: RawPlaybackActivity, keys: string[]): string {
     for (const key of keys) {
@@ -203,6 +210,51 @@ class EmbyClient {
         });
 
         return activity.map((record) => normalizePlaybackActivityRecord(record));
+    }
+
+    /**
+     * Get device-name breakdown directly from Playback Reporting plugin.
+     * This endpoint is more reliable than per-event device fields on some plugin versions.
+     */
+    async getDeviceNameBreakdown(userId: string, days: number): Promise<DeviceBreakdownEntry[]> {
+        const report = await this.fetch<RawBreakdownRecord[]>('/user_usage_stats/DeviceName/BreakdownReport', {
+            user_id: userId,
+            days: String(days)
+        });
+
+        const readNumber = (record: RawBreakdownRecord, keys: string[]): number => {
+            const raw = readFirstString(record, keys);
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        return report
+            .map((record): DeviceBreakdownEntry => {
+                const name = readFirstString(record, [
+                    'name',
+                    'Name',
+                    'device_name',
+                    'DeviceName',
+                    'label',
+                    'Label',
+                    'ReportName'
+                ]);
+                const durationSeconds = readNumber(record, [
+                    'duration',
+                    'Duration',
+                    'TotalDuration',
+                    'PlayDuration',
+                    'TotalPlayDuration'
+                ]);
+                const count = Math.round(readNumber(record, ['count', 'Count', 'PlaybackCount', 'Plays', 'Items']));
+
+                return {
+                    name,
+                    minutes: durationSeconds / 60,
+                    count
+                };
+            })
+            .filter((row) => row.name.trim().length > 0 && row.minutes > 0);
     }
 
     /**

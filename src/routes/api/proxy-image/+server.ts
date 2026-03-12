@@ -20,35 +20,15 @@ function isAllowedUrl(urlString: string): boolean {
         const url = new URL(urlString);
         const hostname = url.hostname.toLowerCase();
 
-        // Check static whitelist
-        if (ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d))) {
-            return true;
-        }
+        if (ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d))) return true;
 
-        // Check if it's the configured Emby server
         const embyUrl = env.EMBY_URL || env.EMBY_SERVER_URL;
         if (embyUrl) {
             const embyHost = new URL(embyUrl).hostname.toLowerCase();
-            if (hostname === embyHost) {
-                return true;
-            }
+            if (hostname === embyHost) return true;
         }
 
-        // Allow local network addresses (192.168.x.x, 10.x.x.x, localhost)
-        if (hostname === 'localhost' ||
-            hostname.startsWith('192.168.') ||
-            hostname.startsWith('10.') ||
-            hostname.startsWith('172.16.') ||
-            hostname.startsWith('172.17.') ||
-            hostname.startsWith('172.18.') ||
-            hostname.startsWith('172.19.') ||
-            hostname.startsWith('172.2') ||
-            hostname.startsWith('172.30.') ||
-            hostname.startsWith('172.31.')) {
-            return true;
-        }
-
-        return false;
+        return false; // Remove the entire LAN block
     } catch {
         return false;
     }

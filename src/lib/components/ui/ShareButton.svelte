@@ -137,6 +137,7 @@
 
     .label {
         line-height: 1;
+        pointer-events: none;
     }
 
     /* Mobile: keep the label visible, just make button slightly more compact */
@@ -144,6 +145,9 @@
         .share-btn {
             padding: 0.625rem 1rem;
             font-size: 0.75rem;
+        }
+        .label {
+            display: none;
         }
     }
 </style>

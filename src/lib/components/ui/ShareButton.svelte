@@ -97,19 +97,16 @@
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
-        background: rgba(20, 20, 20, 0.9);
-        backdrop-filter: blur(10px);
+        background: rgba(20, 20, 20, 0.95); 
         border: 1px solid rgba(255, 255, 255, 0.15);
-        padding: 0.625rem 1.25rem;  /* slightly larger than before */
+        padding: 0.625rem 1.25rem;
         border-radius: 999px;
-        color: rgba(255, 255, 255, 0.85);  /* more visible */
+        color: rgba(255, 255, 255, 0.85);
         font-family: inherit;
         font-size: 0.8rem;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
-        z-index: 50;
-        /* Minimum touch target via padding trick — visually stays pill-shaped */
         min-height: 44px;
         min-width: 44px;
     }

@@ -243,7 +243,7 @@
 	.progress-container {
 		display: flex;
 		justify-content: center;
-		pointer-events: auto;
+		pointer-events: none;
 	}
 
 	.nav-hints {

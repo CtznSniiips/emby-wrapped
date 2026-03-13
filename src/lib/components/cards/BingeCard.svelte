@@ -155,6 +155,22 @@
 		transform: none !important;
 	}
 
+	/* Fix badge: html2canvas can't render white text on gradient reliably.
+	   Use solid background + explicit text color so both are always visible. */
+	:global(.snapshot-mode) .badge {
+		background: #ef4444 !important;
+	}
+	:global(.snapshot-mode) .badge-text,
+	:global(.snapshot-mode) .badge-icon {
+		color: #ffffff !important;
+		-webkit-text-fill-color: #ffffff !important;
+	}
+
+	/* Fix episode-label negative margin pulling it into the number */
+	:global(.snapshot-mode) .episode-label {
+		margin-top: 0.5rem !important;
+	}
+
 	.card-content {
 		display: flex;
 		flex-direction: column;

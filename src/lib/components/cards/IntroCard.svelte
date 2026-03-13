@@ -193,6 +193,16 @@
 		display: none !important;
 	}
 
+	:global(.snapshot-mode) .time-selector-wrapper {
+		display: none !important;
+	}
+
+	/* Prevent line-height:0.85 causing WRAPPED to overlap 2026 */
+	:global(.snapshot-mode) .wrapped-year {
+		line-height: 1.1 !important;
+		margin-bottom: 0.25rem !important;
+	}
+
 	:global(.snapshot-mode) .profile-section {
 		opacity: 1 !important;
 		transform: none !important;

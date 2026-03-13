@@ -115,6 +115,34 @@
                     const bridgeText = clonedEl.querySelector<HTMLElement>(".bridge-text");
                     if (bridgeText) bridgeText.style.setProperty("display", "none", "important");
 
+                    // Hide the time-range selector (not relevant in a share image)
+                    const timeSelector = clonedEl.querySelector<HTMLElement>(".time-selector-wrapper");
+                    if (timeSelector) timeSelector.style.setProperty("display", "none", "important");
+
+                    // Fix BingeCard episode-label negative margin
+                    const episodeLabel = clonedEl.querySelector<HTMLElement>(".episode-label");
+                    if (episodeLabel) episodeLabel.style.setProperty("margin-top", "0.5rem", "important");
+
+                    // Fix TotalTimeCard unit label margin
+                    const unitLabel = clonedEl.querySelector<HTMLElement>(".unit");
+                    if (unitLabel) unitLabel.style.setProperty("margin-top", "1rem", "important");
+
+                    // Fix BingeCard badge: html2canvas can struggle with
+                    // white text on gradient backgrounds - use solid colour
+                    const badge = clonedEl.querySelector<HTMLElement>(".badge");
+                    if (badge) badge.style.setProperty("background", "#ef4444", "important");
+                    clonedEl.querySelectorAll<HTMLElement>(".badge-text, .badge-icon").forEach((n) => {
+                        n.style.setProperty("color", "#ffffff", "important");
+                        n.style.setProperty("-webkit-text-fill-color", "#ffffff", "important");
+                    });
+
+                    // Fix IntroCard wrapped-year line-height
+                    const wrappedYear = clonedEl.querySelector<HTMLElement>(".wrapped-year");
+                    if (wrappedYear) {
+                        wrappedYear.style.setProperty("line-height", "1.1", "important");
+                        wrappedYear.style.setProperty("margin-bottom", "0.25rem", "important");
+                    }
+
                     // ── 5. GenreCard: replace conic-gradient ring with SVG ──
                     // html2canvas doesn't support conic-gradient.
                     const heroRing = clonedEl.querySelector<HTMLElement>(".hero-ring");

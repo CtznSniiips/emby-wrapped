@@ -376,4 +376,9 @@
 		opacity: 1 !important;
 		transform: none !important;
 	}
+
+	/* Prevent unit label overlapping the big number */
+	:global(.snapshot-mode) .unit {
+		margin-top: 1rem !important;
+	}
 </style>

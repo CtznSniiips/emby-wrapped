@@ -115,33 +115,81 @@
                     const bridgeText = clonedEl.querySelector<HTMLElement>(".bridge-text");
                     if (bridgeText) bridgeText.style.setProperty("display", "none", "important");
 
-                    // Hide the time-range selector (not relevant in a share image)
-                    const timeSelector = clonedEl.querySelector<HTMLElement>(".time-selector-wrapper");
-                    if (timeSelector) timeSelector.style.setProperty("display", "none", "important");
+                    // ── Hide UI chrome that has no place in a share image ──────────
+                    [".time-selector-wrapper", ".scroll-indicator", ".select-arrow"]
+                        .forEach(sel => clonedEl.querySelectorAll<HTMLElement>(sel)
+                            .forEach(e => e.style.setProperty("display", "none", "important")));
 
-                    // Fix BingeCard episode-label negative margin
-                    const episodeLabel = clonedEl.querySelector<HTMLElement>(".episode-label");
-                    if (episodeLabel) episodeLabel.style.setProperty("margin-top", "0.5rem", "important");
-
-                    // Fix TotalTimeCard unit label margin
-                    const unitLabel = clonedEl.querySelector<HTMLElement>(".unit");
-                    if (unitLabel) unitLabel.style.setProperty("margin-top", "1rem", "important");
-
-                    // Fix BingeCard badge: html2canvas can struggle with
-                    // white text on gradient backgrounds - use solid colour
-                    const badge = clonedEl.querySelector<HTMLElement>(".badge");
-                    if (badge) badge.style.setProperty("background", "#ef4444", "important");
-                    clonedEl.querySelectorAll<HTMLElement>(".badge-text, .badge-icon").forEach((n) => {
-                        n.style.setProperty("color", "#ffffff", "important");
-                        n.style.setProperty("-webkit-text-fill-color", "#ffffff", "important");
-                    });
-
-                    // Fix IntroCard wrapped-year line-height
+                    // ── IntroCard: fix wrapped-year so it doesn't bleed into WRAPPED ──
                     const wrappedYear = clonedEl.querySelector<HTMLElement>(".wrapped-year");
                     if (wrappedYear) {
                         wrappedYear.style.setProperty("line-height", "1.1", "important");
-                        wrappedYear.style.setProperty("margin-bottom", "0.25rem", "important");
+                        wrappedYear.style.setProperty("margin-bottom", "0.5rem", "important");
+                        wrappedYear.style.setProperty("padding-bottom", "0.25rem", "important");
                     }
+
+                    // ── TotalTimeCard: fix .unit overlapping .number ─────────────────
+                    // html2canvas mis-measures the flex column when vw-based font-sizes
+                    // are involved. Force block layout + explicit spacing on the container.
+                    const bigNumber = clonedEl.querySelector<HTMLElement>(".big-number");
+                    if (bigNumber) {
+                        bigNumber.style.setProperty("display", "block", "important");
+                        bigNumber.style.setProperty("text-align", "center", "important");
+                    }
+                    clonedEl.querySelectorAll<HTMLElement>(".unit").forEach(el => {
+                        el.style.setProperty("display", "block", "important");
+                        el.style.setProperty("margin-top", "0.75rem", "important");
+                        el.style.setProperty("line-height", "1.5", "important");
+                    });
+
+                    // ── StreakCard: fix .value overlapping .range ────────────────────
+                    // .value has line-height:1 with a large clamp font-size; the range
+                    // date text sits immediately below with no gap.
+                    const streakValue = clonedEl.querySelector<HTMLElement>(".value");
+                    if (streakValue) {
+                        streakValue.style.setProperty("display", "block", "important");
+                        streakValue.style.setProperty("margin-bottom", "0.75rem", "important");
+                        streakValue.style.setProperty("line-height", "1.1", "important");
+                        // The inline <span>days</span> inside .value — give it breathing room
+                        streakValue.querySelectorAll<HTMLElement>("span").forEach(s => {
+                            s.style.setProperty("display", "inline", "important");
+                            s.style.setProperty("vertical-align", "middle", "important");
+                        });
+                    }
+                    // Ensure range dates have top breathing room too
+                    clonedEl.querySelectorAll<HTMLElement>(".range").forEach(el => {
+                        el.style.setProperty("margin-top", "0.5rem", "important");
+                        el.style.setProperty("display", "block", "important");
+                    });
+
+                    // ── BingeCard badge: inline-flex children don't render in html2canvas ─
+                    // Replace .badge with a flat <div> carrying the same text as a single
+                    // text node so html2canvas has nothing complex to composite.
+                    const badge = clonedEl.querySelector<HTMLElement>(".badge");
+                    if (badge) {
+                        const icon = badge.querySelector(".badge-icon")?.textContent ?? "✧";
+                        const text = badge.querySelector(".badge-text")?.textContent ?? "BINGE MODE";
+                        badge.innerHTML = "";
+                        badge.style.setProperty("display", "flex", "important");
+                        badge.style.setProperty("align-items", "center", "important");
+                        badge.style.setProperty("justify-content", "center", "important");
+                        badge.style.setProperty("background", "#ef4444", "important");
+                        badge.style.setProperty("background-image", "none", "important");
+                        badge.style.setProperty("padding", "0.5rem 1.25rem", "important");
+                        badge.style.setProperty("border-radius", "20px", "important");
+                        badge.style.setProperty("gap", "0.5rem", "important");
+                        const inner = clonedDoc.createElement("span");
+                        inner.textContent = `${icon} ${text}`;
+                        inner.style.cssText = "color:#fff;font-family:ui-monospace,monospace;" +
+                            "font-size:0.875rem;font-weight:700;letter-spacing:0.1em;" +
+                            "-webkit-text-fill-color:#fff;";
+                        badge.appendChild(inner);
+                    }
+
+                    // ── BingeCard episode-label: negative margin pulls it into the number ─
+                    clonedEl.querySelectorAll<HTMLElement>(".episode-label").forEach(el => {
+                        el.style.setProperty("margin-top", "0.75rem", "important");
+                    });
 
                     // ── 5. GenreCard: replace conic-gradient ring with SVG ──
                     // html2canvas doesn't support conic-gradient.

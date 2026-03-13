@@ -23,7 +23,14 @@
                 // re-fetch images with crossOrigin:anonymous which drops auth cookies → 401.
                 allowTaint: true,
                 logging: false,
-                onclone: (_clonedDoc, clonedEl) => {
+                onclone: (clonedDoc) => {
+                    // html2canvas 1.4.1 only passes the cloned document as the argument.
+                    const clonedEl = clonedDoc.getElementById(targetId);
+                    if (!clonedEl) return;
+
+                    // Apply snapshot-mode so per-card CSS overrides fire
+                    clonedEl.classList.add("snapshot-mode");
+
                     // ── 1. Hide the share button ────────────────────────────
                     clonedEl.querySelectorAll<HTMLElement>(".share-container").forEach(
                         (e) => (e.style.display = "none")

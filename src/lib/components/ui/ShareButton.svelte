@@ -20,7 +20,6 @@
                 backgroundColor: "#0a0a0a",
                 scale: 2,
                 useCORS: true,
-                allowTaint: true,
                 logging: false,
                 onclone: (clonedDoc) => {
                     const clonedElement = clonedDoc.getElementById(targetId);
@@ -30,7 +29,7 @@
                     clonedElement.style.opacity = '1';
                     clonedElement.style.transform = 'none';
 
-                    // Fix 1: Universal gradient text fix
+                    // Universal gradient text fix
                     // html2canvas doesn't support -webkit-background-clip:text so we
                     // walk every element and replace transparent text-fill with solid colors
                     clonedElement.querySelectorAll('*').forEach((el) => {
@@ -57,7 +56,7 @@
                         }
                     });
 
-                    // Fix 2: IntroCard layout — reset animated absolute positioning
+                    // IntroCard layout — reset animated absolute positioning
                     // so year + profile don't overlap
                     const yearLockup = clonedElement.querySelector('.year-lockup') as HTMLElement;
                     if (yearLockup) {
@@ -70,7 +69,7 @@
                     const bridgeText = clonedElement.querySelector('.bridge-text') as HTMLElement;
                     if (bridgeText) bridgeText.style.display = 'none';
 
-                    // Fix 3: GenreCard conic-gradient — replace with SVG ring
+                    // GenreCard conic-gradient — replace with SVG ring
                     const heroRing = clonedElement.querySelector('.hero-ring') as HTMLElement;
                     if (heroRing) {
                         const percent = parseFloat(heroRing.style.getPropertyValue('--percent') || '0');
@@ -100,14 +99,7 @@
                             </div>`;
                     }
 
-                    // Fix 4: Force all images to be visible (poster images)
-                    clonedElement.querySelectorAll('img').forEach((img) => {
-                        const htmlImg = img as HTMLImageElement;
-                        htmlImg.crossOrigin = 'anonymous';
-                        htmlImg.style.opacity = '1';
-                    });
-
-                    // Fix 5: Make all animated elements visible regardless of phase
+                    // Make all animated elements visible regardless of phase
                     clonedElement.querySelectorAll('[class]').forEach((el) => {
                         const htmlEl = el as HTMLElement;
                         const computedOpacity = window.getComputedStyle(htmlEl).opacity;

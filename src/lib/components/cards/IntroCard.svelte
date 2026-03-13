@@ -171,6 +171,9 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 1.5rem;
+		height: auto !important;
+		justify-content: flex-start;
+		padding-top: 3rem;
 	}
 
 	:global(.snapshot-mode) .year-lockup {

@@ -18,31 +18,28 @@
             const canvas = await html2canvas(element, {
                 backgroundColor: "#0a0a0a",
                 scale: 2,
-                useCORS: true,
+                // allowTaint WITHOUT useCORS: images are served via same-origin /api/proxy-image,
+                // so the canvas is never actually tainted. useCORS:true forces html2canvas to
+                // re-fetch images with crossOrigin:anonymous which drops auth cookies → 401.
+                allowTaint: true,
                 logging: false,
-                onclone: (clonedDoc) => {
-                    const el = clonedDoc.getElementById(targetId);
-                    if (!el) return;
-
-                    // Mark snapshot mode for any CSS that needs it
-                    el.classList.add("snapshot-mode");
-
-                    // ── 1. Hide the share button itself ──────────────────────
-                    el.querySelectorAll<HTMLElement>(".share-container").forEach(
+                onclone: (_clonedDoc, clonedEl) => {
+                    // ── 1. Hide the share button ────────────────────────────
+                    clonedEl.querySelectorAll<HTMLElement>(".share-container").forEach(
                         (e) => (e.style.display = "none")
                     );
 
-                    // ── 2. Fix gradient text (html2canvas can't render -webkit-background-clip:text) ──
-                    // Walk every element; if it uses the gradient-clip trick, replace with a solid color.
-                    el.querySelectorAll<HTMLElement>("*").forEach((node) => {
+                    // ── 2. Fix gradient text ────────────────────────────────
+                    // html2canvas can't render -webkit-background-clip:text.
+                    // Walk every element; if it uses the gradient-clip trick, replace
+                    // -webkit-text-fill-color with a solid colour extracted from the gradient.
+                    clonedEl.querySelectorAll<HTMLElement>("*").forEach((node) => {
                         const s = window.getComputedStyle(node);
                         if (
                             s.getPropertyValue("-webkit-text-fill-color") === "transparent" ||
                             s.getPropertyValue("-webkit-background-clip") === "text"
                         ) {
-                            const bg = s.backgroundImage;
-                            // Pull the first recognisable colour stop from the gradient
-                            const m = bg.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}/i);
+                            const m = s.backgroundImage.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}/i);
                             const color = m ? m[0] : "#ffffff";
                             node.style.setProperty("-webkit-text-fill-color", color, "important");
                             node.style.setProperty("color", color, "important");
@@ -53,34 +50,52 @@
                         }
                     });
 
-                    // ── 3. Reveal ALL animated elements ──────────────────────
+                    // ── 3. Reveal all animated elements ────────────────────
                     // Each card hides sections with opacity:0 + transform + sometimes filter.
-                    // We reset every element that is currently invisible.
-                    el.querySelectorAll<HTMLElement>("*").forEach((node) => {
-                        const s = window.getComputedStyle(node);
-                        // Only touch elements that are actually hidden
-                        if (parseFloat(s.opacity) < 0.1) {
+                    // getComputedStyle is unreliable on cloned-doc nodes (wrong window context),
+                    // so we target every known animated class explicitly.
+                    const show = [
+                        // TotalTimeCard
+                        ".lead", ".big-number", ".subtitle",
+                        ".breakdown", ".comparison", ".content-counts",
+                        // IntroCard
+                        ".profile-section", ".footer-info",
+                        // StreakCard
+                        ".eyebrow", ".longest", ".current",
+                        // PersonalityCard
+                        ".icon-section", ".title-section", ".tagline-section", ".details-section",
+                        // BingeCard
+                        ".header", ".show-reveal", ".episode-reveal",
+                        ".duration-section", ".datetime-section", ".total-section",
+                        // Top5Card
+                        ".header-section", ".hero-item", ".grid-item", ".total-stats",
+                        // DayOfWeekCard
+                        ".chart-wrapper", ".personality-badge", ".title-section",
+                        // MonthlyJourneyCard
+                        ".chart-container", ".insight", ".peak-month",
+                        // GenreCard
+                        ".hero-genre", ".genre-row", ".personality",
+                    ];
+                    show.forEach((selector) => {
+                        clonedEl.querySelectorAll<HTMLElement>(selector).forEach((node) => {
                             node.style.setProperty("opacity", "1", "important");
                             node.style.setProperty("transform", "none", "important");
                             node.style.setProperty("filter", "none", "important");
                             node.style.setProperty("visibility", "visible", "important");
-                        } else if (s.filter && s.filter !== "none") {
-                            // Visible but still blurred (e.g. poster entering mid-animation)
-                            node.style.setProperty("filter", "none", "important");
-                        }
+                        });
                     });
 
-                    // ── 4. IntroCard layout fix ───────────────────────────────
-                    // year-lockup is position:absolute and overlaps the profile section.
-                    // Convert the container to a simple vertical stack.
-                    const introContainer = el.querySelector<HTMLElement>(".intro-container");
+                    // ── 4. IntroCard layout fix ─────────────────────────────
+                    // .year-lockup is position:absolute and overlaps .profile-section.
+                    // Convert .intro-container to a simple vertical stack.
+                    const introContainer = clonedEl.querySelector<HTMLElement>(".intro-container");
                     if (introContainer) {
                         introContainer.style.setProperty("height", "auto", "important");
                         introContainer.style.setProperty("justify-content", "flex-start", "important");
                         introContainer.style.setProperty("padding-top", "3rem", "important");
                         introContainer.style.setProperty("gap", "2rem", "important");
                     }
-                    const yearLockup = el.querySelector<HTMLElement>(".year-lockup");
+                    const yearLockup = clonedEl.querySelector<HTMLElement>(".year-lockup");
                     if (yearLockup) {
                         yearLockup.style.setProperty("position", "relative", "important");
                         yearLockup.style.setProperty("top", "auto", "important");
@@ -88,20 +103,17 @@
                         yearLockup.style.setProperty("transform", "none", "important");
                         yearLockup.style.setProperty("opacity", "1", "important");
                     }
-                    const bridgeText = el.querySelector<HTMLElement>(".bridge-text");
-                    if (bridgeText) {
-                        bridgeText.style.setProperty("display", "none", "important");
-                    }
+                    const bridgeText = clonedEl.querySelector<HTMLElement>(".bridge-text");
+                    if (bridgeText) bridgeText.style.setProperty("display", "none", "important");
 
-                    // ── 5. GenreCard: replace conic-gradient ring with SVG ───
+                    // ── 5. GenreCard: replace conic-gradient ring with SVG ──
                     // html2canvas doesn't support conic-gradient.
-                    const heroRing = el.querySelector<HTMLElement>(".hero-ring");
+                    const heroRing = clonedEl.querySelector<HTMLElement>(".hero-ring");
                     if (heroRing) {
                         const percent = parseFloat(
                             heroRing.style.getPropertyValue("--percent") || "0"
                         );
-                        const ringColor =
-                            heroRing.style.getPropertyValue("--color") || "#1db954";
+                        const ringColor = heroRing.style.getPropertyValue("--color") || "#1db954";
                         const r = 54, cx = 60, cy = 60;
                         const circ = 2 * Math.PI * r;
                         const filled = (percent / 100) * circ;
@@ -134,7 +146,6 @@
             if (navigator.share) {
                 const blob = await (await fetch(image)).blob();
                 const file = new File([blob], fileName, { type: "image/png" });
-
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         files: [file],
@@ -150,12 +161,12 @@
         } catch (err) {
             console.error("Sharing failed:", err);
             try {
-                const element = document.getElementById(targetId);
-                if (element) {
-                    const canvas = await html2canvas(element, {
+                const el = document.getElementById(targetId);
+                if (el) {
+                    const canvas = await html2canvas(el, {
                         backgroundColor: "#0a0a0a",
                         scale: 2,
-                        useCORS: true,
+                        allowTaint: true,
                         logging: false,
                     });
                     downloadImage(canvas.toDataURL("image/png"));

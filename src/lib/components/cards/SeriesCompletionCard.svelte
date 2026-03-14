@@ -44,7 +44,9 @@
 			<p class="eyebrow">Progress Tracker</p>
 			<h2>Series Completion</h2>
 		</div>
-		<ShareButton targetId="series-completion-card" fileName="emby-wrapped-series-completion.png" />
+		<div class="share-container">
+			<ShareButton targetId="series-completion-card" fileName="emby-wrapped-series-completion.png" />
+		</div>
 	</div>
 
 	<div class="card-content">
@@ -297,6 +299,10 @@
 		align-self: center;
 		font-weight: 700;
 		color: #67e8f9;
+	}
+
+	:global(.snapshot-mode) .share-container {
+		display: none !important;
 	}
 
 	.share-container {

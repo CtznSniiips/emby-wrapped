@@ -192,26 +192,28 @@
                         badge.appendChild(inner);
                     }
 
-                    // ── PersonalityCard: fix off-center unicode glyph in icon-ring ───
-                    // Geometric unicode chars (◬ ◈ ◯ etc.) have unusual font metrics;
-                    // their visual centre sits above the mathematical bounding box centre.
-                    // html2canvas exaggerates this. Compensate with padding-top.
-                    const mainIcon = clonedEl.querySelector<HTMLElement>(".main-icon");
-                    if (mainIcon) {
-                        mainIcon.style.setProperty("display", "flex", "important");
-                        mainIcon.style.setProperty("align-items", "center", "important");
-                        mainIcon.style.setProperty("justify-content", "center", "important");
-                        mainIcon.style.setProperty("line-height", "1", "important");
-                        mainIcon.style.setProperty("padding-top", "0.15em", "important");
-                        mainIcon.style.setProperty("width", "100%", "important");
-                        mainIcon.style.setProperty("height", "100%", "important");
-                    }
-                    // Also fix the icon-ring to be a proper flex container
+                    // ── PersonalityCard: replace unicode glyph with SVG text ────────
+                    // Every unicode glyph has different font metrics so CSS flex centering
+                    // is never reliable. SVG <text dominant-baseline="central"> is
+                    // mathematically exact regardless of which glyph is used.
                     const iconRing = clonedEl.querySelector<HTMLElement>(".icon-ring");
-                    if (iconRing) {
-                        iconRing.style.setProperty("display", "flex", "important");
-                        iconRing.style.setProperty("align-items", "center", "important");
-                        iconRing.style.setProperty("justify-content", "center", "important");
+                    const mainIcon = clonedEl.querySelector<HTMLElement>(".main-icon");
+                    if (iconRing && mainIcon) {
+                        const glyph = mainIcon.textContent ?? "◈";
+                        iconRing.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg"
+                                 width="120" height="120" viewBox="0 0 120 120"
+                                 style="display:block;overflow:visible">
+                                <text
+                                    x="60" y="60"
+                                    text-anchor="middle"
+                                    dominant-baseline="central"
+                                    font-size="52"
+                                    fill="white"
+                                    font-family="ui-sans-serif,system-ui,sans-serif"
+                                    filter="drop-shadow(0 4px 8px rgba(0,0,0,0.3))"
+                                >${glyph}</text>
+                            </svg>`;
                     }
 
                     // ── 5. GenreCard: replace conic-gradient ring with SVG ──

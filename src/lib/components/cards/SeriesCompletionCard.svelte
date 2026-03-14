@@ -112,8 +112,9 @@
 		isolation: isolate;
 		min-height: 100vh;
 		padding: 2rem 1.25rem;
-		background: radial-gradient(circle at 10% 10%, #1d4ed855, transparent 45%),
-			linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
+		background: radial-gradient(circle at 8% 8%, rgba(30, 64, 175, 0.22), transparent 42%),
+			radial-gradient(circle at 92% 88%, rgba(76, 29, 149, 0.2), transparent 50%),
+			linear-gradient(180deg, #020617 0%, #0b1220 55%, #0a1020 100%);
 		color: #fff;
 		overflow: hidden;
 	}
@@ -121,8 +122,8 @@
 	.orb {
 		position: absolute;
 		border-radius: 999px;
-		filter: blur(40px);
-		opacity: 0.45;
+		filter: blur(56px);
+		opacity: 0.25;
 		z-index: -1;
 	}
 	.orb-1 {
@@ -172,9 +173,9 @@
 	}
 
 	section {
-		background: rgba(148, 163, 184, 0.14);
+		background: rgba(15, 23, 42, 0.5);
 		backdrop-filter: blur(8px);
-		border: 1px solid rgba(255, 255, 255, 0.16);
+		border: 1px solid rgba(148, 163, 184, 0.22);
 		border-radius: 16px;
 		padding: 1rem;
 	}

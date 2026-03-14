@@ -112,8 +112,8 @@
 		isolation: isolate;
 		min-height: 100vh;
 		padding: 2rem 1.25rem;
-		background: radial-gradient(circle at 10% 10%, #1d4ed855, transparent 45%),
-			linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
+		background: radial-gradient(circle at 10% 10%, rgba(29, 78, 216, 0.12), transparent 45%),
+			linear-gradient(180deg, #0d0d0f 0%, #0a0a0a 100%);
 		color: #fff;
 		overflow: hidden;
 	}
@@ -122,7 +122,7 @@
 		position: absolute;
 		border-radius: 999px;
 		filter: blur(40px);
-		opacity: 0.45;
+		opacity: 0.18;
 		z-index: -1;
 	}
 	.orb-1 {
@@ -130,21 +130,21 @@
 		left: -8%;
 		width: 220px;
 		height: 220px;
-		background: #0ea5e9;
+		background: #1db954;
 	}
 	.orb-2 {
 		bottom: 15%;
 		right: -10%;
 		width: 260px;
 		height: 260px;
-		background: #8b5cf6;
+		background: #3b82f6;
 	}
 	.orb-3 {
 		top: 42%;
 		right: 16%;
 		width: 160px;
 		height: 160px;
-		background: #22d3ee;
+		background: #1db954;
 	}
 
 	.card-header {

@@ -16,7 +16,7 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 - **Library Filtering** - Use `FILTER_USER_ID` to restrict displayed content (e.g., to hide NSFW libraries).
 - **High-Quality Visuals** - Automatically fetches higher resolution posters and artist images.
 - **Improved Error Handling** - Robust handling of missing images and server connection issues.
-- **URL parameters** - Provide URLs with a pre-selected time-frame and user
+- **URL parameters** - Provide URLs with a pre-selected time-frame
 - **Emby authentication** - Added security via Emby authentication. Users must log in to see stats
 
 ## Screenshots

@@ -18,6 +18,7 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 - **Improved Error Handling** - Robust handling of missing images and server connection issues.
 - **URL parameters** - Provide URLs with a pre-selected time-frame
 - **Emby authentication** - Added security via Emby authentication. Users must log in to see stats
+- **Seerr integration** - Optional Seerr integration showing number of requests and broken down by movie, series, and user
 
 ## Screenshots
 
@@ -78,10 +79,12 @@ services:
     environment:
       - EMBY_URL=http://your-emby-server:8096
       - EMBY_API_KEY=your-api-key-here
-      - TMDB_API_KEY=   # Optional: for enhanced poster images
-      - PUBLIC_URL=     # Optional: for share links
-      - CACHE_TTL=86400 # Optional
-      - FILTER_USER_ID= # Optional: filter by user's library
+      - TMDB_API_KEY=    # Optional: for enhanced poster images
+      - SEERR_URL=       # Optional: Overseerr/Jellyseerr URL for request stats
+      - SEERR_API_KEY=   # Optional: Overseerr/Jellyseerr API key
+      - PUBLIC_URL=      # Optional: for share links
+      - CACHE_TTL=86400  # Optional
+      - FILTER_USER_ID=  # Optional: filter by user's library
     volumes:
       - ./music:/app/static/music:ro  # Optional: custom background music
     restart: unless-stopped
@@ -153,6 +156,8 @@ npm run preview
 | `EMBY_URL` | Full URL to your Emby server (e.g., `http://192.168.1.100:8096`) | Yes |
 | `EMBY_API_KEY` | API key from Emby Dashboard | Yes |
 | `TMDB_API_KEY` | TMDB API key for enhanced poster images (get one free at themoviedb.org) | No |
+| `SEERR_URL` | Seerr/Overseerr/Jellyseerr base URL for request stats (e.g., `http://192.168.1.100:5055`) | No |
+| `SEERR_API_KEY` | Seerr/Overseerr/Jellyseerr API key used to fetch requests (used with `SEERR_URL`) | No |
 | `PUBLIC_URL` | Public URL for share links (defaults to request origin) | No |
 | `ANALYTICS_SCRIPT` | Analytics script tag (e.g., Umami, Plausible) to inject into page head | No |
 | `FILTER_USER_ID` | Emby User ID to use for library filtering (useful for hiding NSFW content) | No |

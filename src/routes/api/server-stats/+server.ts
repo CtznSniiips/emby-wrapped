@@ -16,8 +16,121 @@ export interface ServerStats {
     topShows: TopItem[];
     topMovies: TopItem[];
     music: MusicStats;
+    seerrRequests: {
+        totalRequests: number;
+        movieRequests: number;
+        seriesRequests: number;
+        requestsByUser: Array<{ name: string; count: number; movieRequests: number; seriesRequests: number }>;
+    } | null;
     year: number;
     timeRangeLabel: string;
+}
+
+interface SeerrRequest {
+    id: number;
+    createdAt: string;
+    type?: string;
+    media?: {
+        mediaType?: string;
+    };
+    requestedBy?: {
+        id?: number;
+        displayName?: string;
+        username?: string;
+    };
+}
+
+function getRequestCategory(request: SeerrRequest): 'movie' | 'series' | null {
+    const normalizedType = request.type?.toLowerCase() || request.media?.mediaType?.toLowerCase();
+    if (normalizedType === 'movie') return 'movie';
+    if (normalizedType === 'tv' || normalizedType === 'series' || normalizedType === 'show') return 'series';
+    return null;
+}
+
+interface SeerrRequestsResponse {
+    results?: SeerrRequest[];
+    pageInfo?: {
+        pages?: number;
+    };
+}
+
+async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRange>): Promise<ServerStats['seerrRequests']> {
+    const seerrUrl = env.SEERR_URL?.trim();
+    const seerrApiKey = env.SEERR_API_KEY?.trim();
+    if (!seerrUrl || !seerrApiKey) return null;
+
+    try {
+        const normalizedUrl = seerrUrl.replace(/\/$/, '');
+        const allRequests: SeerrRequest[] = [];
+        let page = 1;
+        let totalPages = 1;
+
+        while (page <= totalPages) {
+            const skip = (page - 1) * 100;
+            const response = await fetch(`${normalizedUrl}/api/v1/request?skip=${skip}&take=100`, {
+                headers: {
+                    'X-Api-Key': seerrApiKey,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                console.warn(`Failed to fetch Seerr requests: ${response.status}`);
+                return null;
+            }
+
+            const data: SeerrRequestsResponse = await response.json();
+            const pageResults = data.results || [];
+            allRequests.push(...pageResults);
+            totalPages = Math.max(data.pageInfo?.pages || 1, 1);
+            page++;
+        }
+
+        const requestsInTimeRange = allRequests.filter((request) =>
+            matchesTimeRange(request.createdAt, timeRange)
+        );
+
+        const requestsByUserMap = new Map<string, { count: number; movieRequests: number; seriesRequests: number }>();
+        let movieRequests = 0;
+        let seriesRequests = 0;
+
+        for (const request of requestsInTimeRange) {
+            const user = request.requestedBy;
+            const userName = user?.displayName || user?.username || 'Unknown User';
+            const existing = requestsByUserMap.get(userName) || { count: 0, movieRequests: 0, seriesRequests: 0 };
+            const category = getRequestCategory(request);
+
+            existing.count += 1;
+            if (category === 'movie') {
+                existing.movieRequests += 1;
+                movieRequests += 1;
+            } else if (category === 'series') {
+                existing.seriesRequests += 1;
+                seriesRequests += 1;
+            }
+
+            requestsByUserMap.set(userName, existing);
+        }
+
+        const requestsByUser = [...requestsByUserMap.entries()]
+            .map(([name, stats]) => ({
+                name,
+                count: stats.count,
+                movieRequests: stats.movieRequests,
+                seriesRequests: stats.seriesRequests
+            }))
+            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+        return {
+            totalRequests: requestsInTimeRange.length,
+            movieRequests,
+            seriesRequests,
+            requestsByUser
+        };
+    } catch (e) {
+        console.warn('Failed to fetch Seerr request stats:', e);
+        return null;
+    }
 }
 
 // Cache for server stats (expires after 5 minutes)
@@ -281,6 +394,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
             }))
         };
 
+        const seerrRequests = await fetchSeerrRequestStats(timeRange);
+
         const stats: ServerStats = {
             totalUsers: users.length,
             totalMinutes,
@@ -291,6 +406,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
             topShows,
             topMovies,
             music: musicStats,
+            seerrRequests,
             year: timeRange.year,
             timeRangeLabel: periodParam
         };

@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-03-16
+- **Optional Seerr integration**: [Seerr](https://seerr.dev/) integration via optional `SEERR_URL` and `SEERR_API_KEY` environment variables. A requests card will be visible if there are requests during the selected time frame with total number of requests and breakdown of requests by Movie, Series, and User
+
 ## [2.0.2] - 2026-03-14
 - **Share button fixes**: Fixed rendering issues on share button images
 

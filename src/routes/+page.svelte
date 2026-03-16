@@ -7,6 +7,7 @@
 	import AnimatedNumber from "$lib/components/ui/AnimatedNumber.svelte";
 	import Top5Card from "$lib/components/cards/Top5Card.svelte";
     import MusicSummaryCard from "$lib/components/cards/MusicSummaryCard.svelte";
+	import SeerrRequestsCard from "$lib/components/cards/SeerrRequestsCard.svelte";
 
 	import type { PageData } from './$types';
 
@@ -180,6 +181,7 @@
             cards.push('content');
             if (serverStats.topShows?.length > 0) cards.push('top_shows');
             if (serverStats.topMovies?.length > 0) cards.push('top_movies');
+            if (serverStats.seerrRequests?.totalRequests > 0) cards.push('seerr_requests');
             if (serverStats.music && serverStats.music.totalMinutes > 0) cards.push('music');
         }
         cards.push('cta');
@@ -439,7 +441,15 @@
 			/>
 		{/if}
 
-		<!-- Card 5: Music Summary (if exists) -->
+		<!-- Card 5: Seerr Requests -->
+		{#if visibleCards[currentIndex] === 'seerr_requests' && serverStats?.seerrRequests?.totalRequests > 0}
+			<SeerrRequestsCard
+				displayPeriod={displayPeriod}
+				seerrRequests={serverStats.seerrRequests}
+			/>
+		{/if}
+
+		<!-- Card 6: Music Summary (if exists) -->
         {#if visibleCards[currentIndex] === 'music' && serverStats}
 			<MusicSummaryCard music={serverStats.music} />
 		{/if}
@@ -1263,4 +1273,6 @@
 		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.5);
 	}
+
+
 </style>

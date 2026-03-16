@@ -16,7 +16,7 @@ export interface ServerStats {
     topShows: TopItem[];
     topMovies: TopItem[];
     music: MusicStats;
-    seerRequests: {
+    seerrRequests: {
         totalRequests: number;
         requestsByUser: Array<{ name: string; count: number }>;
     } | null;
@@ -24,7 +24,7 @@ export interface ServerStats {
     timeRangeLabel: string;
 }
 
-interface SeerRequest {
+interface SeerrRequest {
     id: number;
     createdAt: string;
     requestedBy?: {
@@ -34,38 +34,38 @@ interface SeerRequest {
     };
 }
 
-interface SeerRequestsResponse {
-    results?: SeerRequest[];
+interface SeerrRequestsResponse {
+    results?: SeerrRequest[];
     pageInfo?: {
         pages?: number;
     };
 }
 
-async function fetchSeerRequestStats(timeRange: ReturnType<typeof parseTimeRange>): Promise<ServerStats['seerRequests']> {
-    const seerUrl = env.SEER_URL?.trim();
-    const seerApiKey = env.SEER_API_KEY?.trim();
-    if (!seerUrl || !seerApiKey) return null;
+async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRange>): Promise<ServerStats['seerrRequests']> {
+    const seerrUrl = env.SEERR_URL?.trim();
+    const seerrApiKey = env.SEERR_API_KEY?.trim();
+    if (!seerrUrl || !seerrApiKey) return null;
 
     try {
-        const normalizedUrl = seerUrl.replace(/\/$/, '');
-        const allRequests: SeerRequest[] = [];
+        const normalizedUrl = seerrUrl.replace(/\/$/, '');
+        const allRequests: SeerrRequest[] = [];
         let page = 1;
         let totalPages = 1;
 
         while (page <= totalPages) {
             const response = await fetch(`${normalizedUrl}/api/v1/request?page=${page}&take=100`, {
                 headers: {
-                    'X-Api-Key': seerApiKey,
+                    'X-Api-Key': seerrApiKey,
                     'Content-Type': 'application/json'
                 }
             });
 
             if (!response.ok) {
-                console.warn(`Failed to fetch Seer requests: ${response.status}`);
+                console.warn(`Failed to fetch Seerr requests: ${response.status}`);
                 return null;
             }
 
-            const data: SeerRequestsResponse = await response.json();
+            const data: SeerrRequestsResponse = await response.json();
             const pageResults = data.results || [];
             allRequests.push(...pageResults);
             totalPages = Math.max(data.pageInfo?.pages || 1, 1);
@@ -92,7 +92,7 @@ async function fetchSeerRequestStats(timeRange: ReturnType<typeof parseTimeRange
             requestsByUser
         };
     } catch (e) {
-        console.warn('Failed to fetch Seer request stats:', e);
+        console.warn('Failed to fetch Seerr request stats:', e);
         return null;
     }
 }
@@ -358,7 +358,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
             }))
         };
 
-        const seerRequests = await fetchSeerRequestStats(timeRange);
+        const seerrRequests = await fetchSeerrRequestStats(timeRange);
 
         const stats: ServerStats = {
             totalUsers: users.length,
@@ -370,7 +370,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
             topShows,
             topMovies,
             music: musicStats,
-            seerRequests,
+            seerrRequests,
             year: timeRange.year,
             timeRangeLabel: periodParam
         };

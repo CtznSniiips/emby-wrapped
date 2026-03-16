@@ -13,6 +13,8 @@ services:
       - CACHE_TTL=${CACHE_TTL:-86400}
       - ANALYTICS_SCRIPT=${ANALYTICS_SCRIPT:-}
       - FILTER_USER_ID=${FILTER_USER_ID:-}
+      - SEERR_URL=${SEERR_URL:-}
+      - SEERR_API_KEY=${SEERR_API_KEY:-}
     volumes:
       # Mount custom music files (optional)
       - ./music:/app/static/music:ro

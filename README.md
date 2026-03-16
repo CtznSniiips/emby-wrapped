@@ -79,8 +79,8 @@ services:
       - EMBY_URL=http://your-emby-server:8096
       - EMBY_API_KEY=your-api-key-here
       - TMDB_API_KEY=   # Optional: for enhanced poster images
-      - SEER_URL=       # Optional: Overseerr/Jellyseerr URL for request stats
-      - SEER_API_KEY=   # Optional: Overseerr/Jellyseerr API key
+      - SEERR_URL=       # Optional: Overseerr/Jellyseerr URL for request stats
+      - SEERR_API_KEY=   # Optional: Overseerr/Jellyseerr API key
       - PUBLIC_URL=     # Optional: for share links
       - CACHE_TTL=86400 # Optional
       - FILTER_USER_ID= # Optional: filter by user's library
@@ -155,8 +155,8 @@ npm run preview
 | `EMBY_URL` | Full URL to your Emby server (e.g., `http://192.168.1.100:8096`) | Yes |
 | `EMBY_API_KEY` | API key from Emby Dashboard | Yes |
 | `TMDB_API_KEY` | TMDB API key for enhanced poster images (get one free at themoviedb.org) | No |
-| `SEER_URL` | Overseerr/Jellyseerr base URL for request stats (e.g., `http://overseerr:5055`) | No |
-| `SEER_API_KEY` | Overseerr/Jellyseerr API key used to fetch requests (used with `SEER_URL`) | No |
+| `SEERR_URL` | Overseerr/Jellyseerr base URL for request stats (e.g., `http://overseerr:5055`) | No |
+| `SEERR_API_KEY` | Overseerr/Jellyseerr API key used to fetch requests (used with `SEERR_URL`) | No |
 | `PUBLIC_URL` | Public URL for share links (defaults to request origin) | No |
 | `ANALYTICS_SCRIPT` | Analytics script tag (e.g., Umami, Plausible) to inject into page head | No |
 | `FILTER_USER_ID` | Emby User ID to use for library filtering (useful for hiding NSFW content) | No |

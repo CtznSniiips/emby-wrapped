@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, createEventDispatcher } from "svelte";
 	import ProgressDots from "$lib/components/ui/ProgressDots.svelte";
-	import { UNICODE } from "$lib/utils/format";
 
 	export let totalCards: number;
 	export let onCardChange: ((index: number) => void) | undefined = undefined;
@@ -157,7 +156,7 @@
 					class="nav-btn prev"
 					on:click|stopPropagation={prevCard}
 				>
-					<span>{UNICODE.arrow}</span>
+					<span aria-hidden="true">←</span>
 				</button>
 			{/if}
 			{#if currentCard < totalCards - 1}
@@ -165,7 +164,7 @@
 					class="nav-btn next"
 					on:click|stopPropagation={nextCard}
 				>
-					<span>{UNICODE.arrow}</span>
+					<span aria-hidden="true">→</span>
 				</button>
 			{/if}
 		</div>
@@ -282,8 +281,13 @@
 	}
 
 	.nav-btn.prev span {
-		display: inline-block;
-		transform: rotate(180deg);
+		display: block;
+		line-height: 1;
+	}
+
+	.nav-btn.next span {
+		display: block;
+		line-height: 1;
 	}
 
 	.nav-btn:hover {

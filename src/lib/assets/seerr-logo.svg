@@ -1,0 +1,15 @@
+<svg width="256" height="72" viewBox="0 0 256 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="seerrGrad" x1="8" y1="8" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#66E0FF"/>
+      <stop offset="1" stop-color="#1A7DFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="64" height="64" rx="18" fill="url(#seerrGrad)"/>
+  <path d="M22 24C22 21.7909 23.7909 20 26 20H46C48.2091 20 50 21.7909 50 24V48C50 50.2091 48.2091 52 46 52H26C23.7909 52 22 50.2091 22 48V24Z" fill="white" fill-opacity="0.15"/>
+  <path d="M31 38C31 35.2386 33.2386 33 36 33H40C42.7614 33 45 35.2386 45 38V39C45 41.7614 42.7614 44 40 44H36C33.2386 44 31 41.7614 31 39V38Z" fill="white"/>
+  <path d="M84 48V23H107C116 23 121 28 121 35C121 42 116 48 107 48H84ZM95 40H106C108.8 40 110 38 110 35.5C110 33 108.8 31 106 31H95V40Z" fill="white"/>
+  <path d="M126 48V23H158V31H136V32.8H156V39.8H136V40H158V48H126Z" fill="white"/>
+  <path d="M163 48V23H195V31H173V32.8H193V39.8H173V40H195V48H163Z" fill="white"/>
+  <path d="M200 48V23H225C232 23 236 27.2 236 33.2C236 37.7 233.8 40.6 230.1 42L237 48H224.2L218.9 43.4H210V48H200ZM210 36.6H222.2C224.2 36.6 225.3 35.7 225.3 34C225.3 32.3 224.2 31.4 222.2 31.4H210V36.6Z" fill="white"/>
+</svg>

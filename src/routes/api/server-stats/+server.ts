@@ -18,7 +18,9 @@ export interface ServerStats {
     music: MusicStats;
     seerrRequests: {
         totalRequests: number;
-        requestsByUser: Array<{ name: string; count: number }>;
+        movieRequests: number;
+        seriesRequests: number;
+        requestsByUser: Array<{ name: string; count: number; movieRequests: number; seriesRequests: number }>;
     } | null;
     year: number;
     timeRangeLabel: string;
@@ -27,11 +29,22 @@ export interface ServerStats {
 interface SeerrRequest {
     id: number;
     createdAt: string;
+    type?: string;
+    media?: {
+        mediaType?: string;
+    };
     requestedBy?: {
         id?: number;
         displayName?: string;
         username?: string;
     };
+}
+
+function getRequestCategory(request: SeerrRequest): 'movie' | 'series' | null {
+    const normalizedType = request.type?.toLowerCase() || request.media?.mediaType?.toLowerCase();
+    if (normalizedType === 'movie') return 'movie';
+    if (normalizedType === 'tv' || normalizedType === 'series' || normalizedType === 'show') return 'series';
+    return null;
 }
 
 interface SeerrRequestsResponse {
@@ -77,19 +90,41 @@ async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRang
             matchesTimeRange(request.createdAt, timeRange)
         );
 
-        const requestsByUserMap = new Map<string, number>();
+        const requestsByUserMap = new Map<string, { count: number; movieRequests: number; seriesRequests: number }>();
+        let movieRequests = 0;
+        let seriesRequests = 0;
+
         for (const request of requestsInTimeRange) {
             const user = request.requestedBy;
             const userName = user?.displayName || user?.username || 'Unknown User';
-            requestsByUserMap.set(userName, (requestsByUserMap.get(userName) || 0) + 1);
+            const existing = requestsByUserMap.get(userName) || { count: 0, movieRequests: 0, seriesRequests: 0 };
+            const category = getRequestCategory(request);
+
+            existing.count += 1;
+            if (category === 'movie') {
+                existing.movieRequests += 1;
+                movieRequests += 1;
+            } else if (category === 'series') {
+                existing.seriesRequests += 1;
+                seriesRequests += 1;
+            }
+
+            requestsByUserMap.set(userName, existing);
         }
 
         const requestsByUser = [...requestsByUserMap.entries()]
-            .map(([name, count]) => ({ name, count }))
+            .map(([name, stats]) => ({
+                name,
+                count: stats.count,
+                movieRequests: stats.movieRequests,
+                seriesRequests: stats.seriesRequests
+            }))
             .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
         return {
             totalRequests: requestsInTimeRange.length,
+            movieRequests,
+            seriesRequests,
             requestsByUser
         };
     } catch (e) {

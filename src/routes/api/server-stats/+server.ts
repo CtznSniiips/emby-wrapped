@@ -53,7 +53,8 @@ async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRang
         let totalPages = 1;
 
         while (page <= totalPages) {
-            const response = await fetch(`${normalizedUrl}/api/v1/request?page=${page}&take=100`, {
+            const skip = (page - 1) * 100;
+            const response = await fetch(`${normalizedUrl}/api/v1/request?skip=${skip}&take=100`, {
                 headers: {
                     'X-Api-Key': seerrApiKey,
                     'Content-Type': 'application/json'

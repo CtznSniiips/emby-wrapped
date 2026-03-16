@@ -181,7 +181,7 @@
             cards.push('content');
             if (serverStats.topShows?.length > 0) cards.push('top_shows');
             if (serverStats.topMovies?.length > 0) cards.push('top_movies');
-            if (serverStats.seerrRequests) cards.push('seerr_requests');
+            if (serverStats.seerrRequests?.totalRequests > 0) cards.push('seerr_requests');
             if (serverStats.music && serverStats.music.totalMinutes > 0) cards.push('music');
         }
         cards.push('cta');
@@ -442,7 +442,7 @@
 		{/if}
 
 		<!-- Card 5: Seerr Requests -->
-		{#if visibleCards[currentIndex] === 'seerr_requests' && serverStats?.seerrRequests}
+		{#if visibleCards[currentIndex] === 'seerr_requests' && serverStats?.seerrRequests?.totalRequests > 0}
 			<SeerrRequestsCard
 				displayPeriod={displayPeriod}
 				seerrRequests={serverStats.seerrRequests}

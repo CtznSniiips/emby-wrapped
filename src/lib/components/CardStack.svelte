@@ -69,9 +69,9 @@
 		// Minimum swipe distance
 		const minSwipe = 50;
 
-		// Prioritize vertical swipes
-		if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > minSwipe) {
-			if (diffY > 0) {
+		// Swipe horizontally for card navigation.
+		if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > minSwipe) {
+			if (diffX > 0) {
 				nextCard();
 			} else {
 				prevCard();
@@ -157,7 +157,7 @@
 					class="nav-btn prev"
 					on:click|stopPropagation={prevCard}
 				>
-					<span>{UNICODE.triangleUp}</span>
+					<span>{UNICODE.arrow}</span>
 				</button>
 			{/if}
 			{#if currentCard < totalCards - 1}
@@ -165,7 +165,7 @@
 					class="nav-btn next"
 					on:click|stopPropagation={nextCard}
 				>
-					<span>{UNICODE.triangleDown}</span>
+					<span>{UNICODE.arrow}</span>
 				</button>
 			{/if}
 		</div>
@@ -193,6 +193,11 @@
 	.card-wrapper {
 		position: absolute;
 		inset: 0;
+		overflow-y: auto;
+		overflow-x: hidden;
+		overscroll-behavior-y: contain;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-gutter: stable;
 		opacity: 0;
 		/* Default state (hidden) */
 		transform: scale(0.9) translateY(20px);
@@ -204,6 +209,11 @@
 			filter 0.8s cubic-bezier(0.19, 1, 0.22, 1);
 		z-index: 1;
 		will-change: transform, opacity, filter;
+	}
+
+	.card-wrapper :global(.card-base) {
+		height: auto;
+		min-height: 100%;
 	}
 
 	.card-wrapper.active {
@@ -269,6 +279,11 @@
 		cursor: pointer;
 		pointer-events: auto;
 		transition: all 0.2s ease;
+	}
+
+	.nav-btn.prev span {
+		display: inline-block;
+		transform: rotate(180deg);
 	}
 
 	.nav-btn:hover {

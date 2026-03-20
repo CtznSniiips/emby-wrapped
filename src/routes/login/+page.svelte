@@ -1,5 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
+    import EmbyWrappedLogo from '$lib/assets/embywrapped-logo.png';
     import { UNICODE } from '$lib/utils/format';
     import type { PageData } from './$types';
 
@@ -55,6 +56,8 @@
 
     <main class="user-content">
         <header class="header">
+            <img src={EmbyWrappedLogo} alt="EmbyWrapped logo" class="logo" />
+
             <div class="unicode-line">
                 <span>{UNICODE.diamond}</span>
                 <span>{UNICODE.dots}</span>
@@ -155,6 +158,13 @@
 
     .header {
         margin-bottom: 2rem;
+    }
+
+    .logo {
+        display: block;
+        width: min(220px, 60vw);
+        height: auto;
+        margin: 0 auto 1rem;
     }
 
     .unicode-line {

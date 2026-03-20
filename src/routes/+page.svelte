@@ -274,18 +274,18 @@
 		{#if visibleCards[currentIndex] === 'intro'}
 			<div class="card-base">
 				<div class="card-content intro-card">
-					<div class="unicode-line" class:show={introPhase >= 1}>
-						<span>{UNICODE.diamond}</span>
-						<span>{UNICODE.dots}</span>
-						<span>{UNICODE.diamond}</span>
-					</div>
-
 					<img
 						src={embywrappedLogo}
 						alt="Emby Wrapped logo"
 						class="community-logo"
 						class:show={introPhase >= 2}
 					/>
+
+					<div class="unicode-line" class:show={introPhase >= 1}>
+						<span>{UNICODE.diamond}</span>
+						<span>{UNICODE.dots}</span>
+						<span>{UNICODE.diamond}</span>
+					</div>
 
 					<h1
 						class="big-title font-display"

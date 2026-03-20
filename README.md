@@ -1,4 +1,4 @@
-# Emby Wrapped (Enhanced)
+# <img width="24px" src="./src/lib/assets/embywrapped-logo.png" alt="EmbyWrapped"></img> Emby Wrapped (Enhanced)
 
 A beautiful, Spotify Wrapped-style year-in-review experience for your Emby media server. This fork includes enhanced music statistics, improved image handling, and more detailed viewing patterns.
 

@@ -90,6 +90,19 @@ export interface BingeSession {
     totalMinutes: number;
 }
 
+export interface LiveTvChannelStat {
+    id: string;
+    name: string;
+    logoUrl: string;
+    minutes: number;
+    count: number;
+}
+
+export interface LiveTvStats {
+    totalMinutes: number;
+    topChannels: LiveTvChannelStat[];
+}
+
 export interface MusicStats {
     totalMinutes: number;
     trackCount: number;
@@ -190,6 +203,9 @@ export interface UserStats {
 
     // Music (optional)
     music?: MusicStats;
+
+    // Live TV (optional)
+    liveTv?: LiveTvStats;
 
     // Primary genre for personality (most watched)
     primaryGenre: string | null;
@@ -904,6 +920,33 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         type: sortedActivity[sortedActivity.length - 1].item_type
     } : null;
 
+    // Process LiveTV stats (TvChannel items)
+    let liveTvStats: LiveTvStats | undefined;
+    const livetvActivity = videoActivity.filter(a => a.item_type.toLowerCase() === 'tvchannel');
+    if (livetvActivity.length > 0) {
+        const channelMap = new Map<string, { minutes: number; count: number; name: string }>();
+        for (const activity of livetvActivity) {
+            const id = String(activity.item_id);
+            const minutes = parseInt(activity.duration || '0', 10) / 60;
+            const existing = channelMap.get(id) || { minutes: 0, count: 0, name: activity.item_name };
+            existing.minutes += minutes;
+            existing.count += 1;
+            channelMap.set(id, existing);
+        }
+        const liveTvTotalMinutes = Math.round([...channelMap.values()].reduce((s, c) => s + c.minutes, 0));
+        const topChannels: LiveTvChannelStat[] = [...channelMap.entries()]
+            .sort((a, b) => b[1].minutes - a[1].minutes)
+            .slice(0, 5)
+            .map(([id, stats]) => ({
+                id,
+                name: stats.name,
+                logoUrl: emby.getImageUrl(id, 'Primary', 400),
+                minutes: Math.round(stats.minutes),
+                count: stats.count
+            }));
+        liveTvStats = { totalMinutes: liveTvTotalMinutes, topChannels };
+    }
+
     // Process music stats if available
     let musicStats: MusicStats | undefined;
     if (audioActivity.length > 0) {
@@ -1035,6 +1078,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         firstWatch,
         lastWatch,
         music: musicStats,
+        liveTv: liveTvStats,
         primaryGenre: topGenres.length > 0 ? topGenres[0].name : null,
         primaryGenrePercentage: topGenres.length > 0 ? topGenres[0].percentage : 0,
         secondaryGenre: topGenres.length > 1 ? topGenres[1].name : null,

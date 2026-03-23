@@ -19,6 +19,7 @@
 	import PersonalityCard from "$lib/components/cards/PersonalityCard.svelte";
 	import SeriesCompletionCard from "$lib/components/cards/SeriesCompletionCard.svelte";
 	import MusicSummaryCard from "$lib/components/cards/MusicSummaryCard.svelte";
+	import LiveTvCard from "$lib/components/cards/LiveTvCard.svelte";
 	import type { PageData } from "./$types";
 
 	export let data: PageData;
@@ -214,7 +215,19 @@
 			});
 		}
 
-		// 14. Always end with finale
+		// 14. Live TV card (if user watched any live TV channels)
+		if (stats.liveTv && stats.liveTv.totalMinutes > 0) {
+			cards.push({
+				type: "livetv",
+				component: LiveTvCard,
+				props: {
+					totalMinutes: stats.liveTv.totalMinutes,
+					topChannels: stats.liveTv.topChannels,
+				},
+			});
+		}
+
+		// 15. Always end with finale
 		cards.push({
 			type: "finale",
 			component: FinaleCard,

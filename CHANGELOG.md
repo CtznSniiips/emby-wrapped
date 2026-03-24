@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-03-24
+- **Live TV stats**: Added new card for LiveTV showing total watch time (for user) and the top 5 channels played by watch time
+
 ## [2.1.0] - 2026-03-16
 - **Optional Seerr integration**: [Seerr](https://seerr.dev/) integration via optional `SEERR_URL` and `SEERR_API_KEY` environment variables. A requests card will be visible if there are requests during the selected time frame with total number of requests and breakdown of requests by Movie, Series, and User
 

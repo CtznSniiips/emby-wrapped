@@ -38,6 +38,7 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 - **Binge Sessions** - See your longest viewing marathons
 - **Monthly Journey** - Track your viewing across the year
 - **Device breakdown** - See which devices you watched on
+- **Live TV** - See Live TV time watched and top 5 channels
 - **Share Cards** - Download individual stat cards to share
 
 ## Requirements

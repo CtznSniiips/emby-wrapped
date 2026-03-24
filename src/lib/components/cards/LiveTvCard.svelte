@@ -145,7 +145,7 @@
 		<div class="footer" class:show={phase >= 5}>
 			<div class="footer-line"></div>
 			<div class="footer-text font-mono">
-				{topChannels.length} channel{topChannels.length !== 1 ? "s" : ""} tuned in
+				Top {topChannels.length} channel{topChannels.length !== 1 ? "s" : ""} tuned in
 			</div>
 			<div class="footer-line"></div>
 		</div>

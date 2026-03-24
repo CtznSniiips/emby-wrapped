@@ -34,6 +34,7 @@
 	}
 
 	function getLogoUrl(ch: LiveTvChannelStat): string {
+		if (!ch.logoUrl) return '';
 		return `/api/proxy-image?url=${encodeURIComponent(ch.logoUrl)}`;
 	}
 
@@ -105,7 +106,7 @@
 					<div class="rank font-mono">#{i + 1}</div>
 
 					<div class="logo-wrap">
-						{#if !imageErrors.has(ch.id)}
+						{#if !imageErrors.has(ch.id) && ch.logoUrl}
 							<img
 								src={getLogoUrl(ch)}
 								alt={ch.name}

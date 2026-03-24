@@ -921,25 +921,33 @@ export async function aggregateUserStats(userId: string, username: string, timeR
     } : null;
 
     // Process LiveTV stats (TvChannel items)
-    // Group by normalized channel NAME (not item_id) because Emby's playback reporting
-    // can assign different item_ids to the same physical channel across sessions/tuners.
-    // We also keep the first-seen item_id per channel to use for logo fetching.
+    // The item_id in playback logs for TvChannel entries is the airing/program ID,
+    // NOT the channel's own item ID. We must fetch the real channel list from Emby
+    // and match by name to get the correct ID for logo lookups.
+    // We also group by normalized name to de-duplicate channels that appear under
+    // multiple program IDs across different sessions/tuners.
     let liveTvStats: LiveTvStats | undefined;
     const livetvActivity = videoActivity.filter(a => a.item_type.toLowerCase() === 'tvchannel');
     if (livetvActivity.length > 0) {
-        const channelMap = new Map<string, { minutes: number; count: number; name: string; firstId: string }>();
+        // Fetch the real channel list (name → real channel item ID)
+        const channelIdByName = await emby.getLiveTvChannels(userId);
+
+        const channelMap = new Map<string, { minutes: number; count: number; name: string; realId: string | null }>();
         for (const activity of livetvActivity) {
-            const id = String(activity.item_id);
-            // Normalize name for deduplication: trim + collapse whitespace + lowercase key
+            // Normalize name for deduplication
             const nameKey = activity.item_name.trim().toLowerCase().replace(/\s+/g, ' ');
             const existing = channelMap.get(nameKey) || {
                 minutes: 0,
                 count: 0,
                 name: activity.item_name.trim(),
-                firstId: id
+                realId: channelIdByName.get(nameKey) ?? null
             };
             existing.minutes += parseInt(activity.duration || '0', 10) / 60;
             existing.count += 1;
+            // Fill in the real ID if we didn't have it yet
+            if (!existing.realId) {
+                existing.realId = channelIdByName.get(nameKey) ?? null;
+            }
             channelMap.set(nameKey, existing);
         }
         const liveTvTotalMinutes = Math.round([...channelMap.values()].reduce((s, c) => s + c.minutes, 0));
@@ -947,10 +955,10 @@ export async function aggregateUserStats(userId: string, username: string, timeR
             .sort((a, b) => b.minutes - a.minutes)
             .slice(0, 5)
             .map((stats) => ({
-                id: stats.firstId,
+                id: stats.realId ?? '',
                 name: stats.name,
-                // Use the LiveTV-specific channel logo endpoint, not the VOD Items endpoint
-                logoUrl: emby.getLiveTvChannelLogoUrl(stats.firstId, 400),
+                // Only build a logo URL if we have a real channel ID
+                logoUrl: stats.realId ? emby.getLiveTvChannelLogoUrl(stats.realId, 400) : '',
                 minutes: Math.round(stats.minutes),
                 count: stats.count
             }));

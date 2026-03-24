@@ -293,11 +293,38 @@ class EmbyClient {
     }
 
     /**
-     * Get logo URL for a Live TV channel
-     * Uses /LiveTv/Channels/{id}/Images/Primary — different from the VOD Items endpoint
+     * Get logo URL for a Live TV channel using its real channel item ID
      */
     getLiveTvChannelLogoUrl(channelId: string, maxWidth: number = 400): string {
-        return `${this.baseUrl}/LiveTv/Channels/${channelId}/Images/Primary?maxWidth=${maxWidth}&api_key=${this.apiKey}`;
+        return `${this.baseUrl}/Items/${channelId}/Images/Primary?maxWidth=${maxWidth}&api_key=${this.apiKey}`;
+    }
+
+    /**
+     * Fetch all Live TV channels from Emby.
+     * Returns a map of lowercase channel name → channel item ID so we can
+     * resolve the correct image ID from playback-log names.
+     */
+    async getLiveTvChannels(userId: string): Promise<Map<string, string>> {
+        interface ChannelResponse {
+            Items: { Id: string; Name: string }[];
+            TotalRecordCount: number;
+        }
+        try {
+            const response = await this.fetch<ChannelResponse>('/LiveTv/Channels', {
+                UserId: userId,
+                Limit: '1000',
+                Fields: 'PrimaryImageAspectRatio'
+            });
+            const map = new Map<string, string>();
+            for (const ch of response.Items ?? []) {
+                if (ch.Id && ch.Name) {
+                    map.set(ch.Name.trim().toLowerCase().replace(/\s+/g, ' '), ch.Id);
+                }
+            }
+            return map;
+        } catch {
+            return new Map();
+        }
     }
 
     /**

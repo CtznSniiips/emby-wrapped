@@ -15,6 +15,8 @@ services:
       - FILTER_USER_ID=${FILTER_USER_ID:-}
       - SEERR_URL=${SEERR_URL:-}
       - SEERR_API_KEY=${SEERR_API_KEY:-}
+      - TRACEARR_URL=${TRACEARR_URL:-}
+      - TRACEARR_API_KEY=${TRACEARR_API_KEY:-}
     volumes:
       # Mount custom music files (optional)
       - ./music:/app/static/music:ro

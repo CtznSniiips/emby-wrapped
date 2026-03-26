@@ -46,11 +46,12 @@ This version (`emby-wrapped-ftp`) adds several features and improvements over th
 ### Emby Server Setup
 
 1. **Emby Server** - Version 4.7+ recommended
-2. **Playback Reporting Plugin** (Required)
+2. **Playback Reporting Plugin** (Required unless using Tracearr)
    - Go to Emby Dashboard → Plugins → Catalog
    - Search for "Playback Reporting"
    - Install and restart Emby server
    - This plugin tracks detailed playback history needed for stats
+   - If you use Tracearr integration (`TRACEARR_URL` + `TRACEARR_API_KEY`), Emby Wrapped can read playback history from Tracearr instead
 
 3. **API Key**
    - Go to Emby Dashboard → API Keys
@@ -83,6 +84,8 @@ services:
       - TMDB_API_KEY=    # Optional: for enhanced poster images
       - SEERR_URL=       # Optional: Overseerr/Jellyseerr URL for request stats
       - SEERR_API_KEY=   # Optional: Overseerr/Jellyseerr API key
+      - TRACEARR_URL=    # Optional: Tracearr URL (uses Tracearr history instead of Playback Reporting)
+      - TRACEARR_API_KEY=# Optional: Tracearr public API key (format: trr_pub_*)
       - PUBLIC_URL=      # Optional: for share links
       - CACHE_TTL=86400  # Optional
       - FILTER_USER_ID=  # Optional: filter by user's library
@@ -159,6 +162,8 @@ npm run preview
 | `TMDB_API_KEY` | TMDB API key for enhanced poster images (get one free at themoviedb.org) | No |
 | `SEERR_URL` | Seerr/Overseerr/Jellyseerr base URL for request stats (e.g., `http://192.168.1.100:5055`) | No |
 | `SEERR_API_KEY` | Seerr/Overseerr/Jellyseerr API key used to fetch requests (used with `SEERR_URL`) | No |
+| `TRACEARR_URL` | Tracearr base URL (e.g., `http://192.168.1.100:3001`). When set with `TRACEARR_API_KEY`, history data is pulled from Tracearr instead of Emby's Playback Reporting plugin. | No |
+| `TRACEARR_API_KEY` | Tracearr Public API key (`trr_pub_*`) used with `TRACEARR_URL`. | No |
 | `PUBLIC_URL` | Public URL for share links (defaults to request origin) | No |
 | `ANALYTICS_SCRIPT` | Analytics script tag (e.g., Umami, Plausible) to inject into page head | No |
 | `FILTER_USER_ID` | Emby User ID to use for library filtering (useful for hiding NSFW content) | No |

@@ -40,6 +40,7 @@ export interface PlaybackActivity {
 
 type RawPlaybackActivity = Record<string, string | number | boolean | undefined>;
 type RawBreakdownRecord = Record<string, string | number | boolean | undefined>;
+type TracearrRecord = Record<string, unknown>;
 
 export interface DeviceBreakdownEntry {
     name: string;
@@ -83,6 +84,32 @@ function normalizePlaybackActivityRecord(record: RawPlaybackActivity): PlaybackA
     };
 }
 
+function readTracearrString(record: TracearrRecord, keys: string[]): string {
+    for (const key of keys) {
+        const value = record[key];
+        if (value === undefined || value === null) continue;
+        const str = String(value).trim();
+        if (str.length > 0) return str;
+    }
+    return '';
+}
+
+function readTracearrNumber(record: TracearrRecord, keys: string[]): number {
+    const raw = readTracearrString(record, keys);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pseudoItemId(name: string, startedAt: string): number {
+    const input = `${name}::${startedAt}`.toLowerCase();
+    let hash = 0;
+    for (let i = 0; i < input.length; i += 1) {
+        hash = ((hash << 5) - hash) + input.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
 export interface EmbyItem {
     Id: string;
     Name: string;
@@ -113,6 +140,18 @@ export interface EmbyItem {
 }
 
 class EmbyClient {
+    private get tracearrUrl(): string {
+        return (env.TRACEARR_URL || '').trim().replace(/\/$/, '');
+    }
+
+    private get tracearrApiKey(): string {
+        return (env.TRACEARR_API_KEY || '').trim();
+    }
+
+    private get useTracearrHistory(): boolean {
+        return Boolean(this.tracearrUrl && this.tracearrApiKey);
+    }
+
     private get baseUrl(): string {
         const configured =
             env.EMBY_URL || env.EMBY_SERVER_URL; // EMBY_SERVER_URL kept for backwards compatibility
@@ -172,6 +211,42 @@ class EmbyClient {
         return response.json();
     }
 
+    private async fetchTracearrHistoryPage(
+        page: number,
+        pageSize: number,
+        startDate: string,
+        endDate: string
+    ): Promise<{ items: TracearrRecord[]; totalPages: number; }> {
+        const url = new URL(`${this.tracearrUrl}/api/v1/public/history`);
+        url.searchParams.set('page', String(page));
+        url.searchParams.set('pageSize', String(pageSize));
+        url.searchParams.set('startDate', startDate);
+        url.searchParams.set('endDate', endDate);
+
+        const response = await fetch(url.toString(), {
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${this.tracearrApiKey}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Tracearr API error: ${response.status} ${response.statusText}`);
+        }
+
+        const payload = await response.json() as Record<string, unknown>;
+        const items =
+            (Array.isArray(payload.items) && payload.items as TracearrRecord[]) ||
+            (Array.isArray(payload.data) && payload.data as TracearrRecord[]) ||
+            [];
+
+        const pagination = (payload.pagination ?? payload.meta ?? payload.pageInfo) as Record<string, unknown> | undefined;
+        const totalPagesRaw = Number(pagination?.totalPages ?? pagination?.pages ?? 1);
+        const totalPages = Number.isFinite(totalPagesRaw) && totalPagesRaw > 0 ? totalPagesRaw : 1;
+
+        return { items, totalPages };
+    }
+
     /**
      * Get all users from the Emby server
      */
@@ -204,6 +279,79 @@ class EmbyClient {
      * Get playback activity for a specific user from the Playback Reporting plugin
      */
     async getUserPlaybackActivity(userId: string, days: number = 365): Promise<PlaybackActivity[]> {
+        if (this.useTracearrHistory) {
+            const users = await this.getUsers();
+            const requestedUser = users.find((user) => user.Id === userId);
+            const requestedUsername = requestedUser?.Name?.toLowerCase().trim();
+            const userName = requestedUser?.Name;
+            if (!requestedUsername || !userName) return [];
+
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setUTCDate(endDate.getUTCDate() - Math.max(1, days));
+
+            const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
+            const pageSize = 100;
+            const maxPages = 100;
+            const tracearrRows: TracearrRecord[] = [];
+            let page = 1;
+            let totalPages = 1;
+
+            do {
+                const pageData = await this.fetchTracearrHistoryPage(page, pageSize, dateOnly(startDate), dateOnly(endDate));
+                tracearrRows.push(...pageData.items);
+                totalPages = Math.min(pageData.totalPages, maxPages);
+                page += 1;
+            } while (page <= totalPages);
+
+            return tracearrRows
+                .filter((record) => {
+                    const username = readTracearrString(record, ['username', 'userName', 'serverUsername', 'name']).toLowerCase().trim();
+                    return username === requestedUsername;
+                })
+                .map((record) => {
+                    const startedAt = readTracearrString(record, ['startedAt', 'startTime', 'createdAt', 'date']);
+                    const dateObj = startedAt ? new Date(startedAt) : new Date();
+                    const isInvalidDate = Number.isNaN(dateObj.getTime());
+                    const safeDate = isInvalidDate ? new Date() : dateObj;
+                    const durationSecondsRaw = readTracearrNumber(record, ['duration', 'durationSeconds', 'durationSec', 'watchTimeSeconds']);
+                    const durationMs = readTracearrNumber(record, ['durationMs', 'watchTimeMs']);
+                    const durationSeconds = durationSecondsRaw > 0
+                        ? durationSecondsRaw
+                        : durationMs > 0
+                            ? Math.round(durationMs / 1000)
+                            : 0;
+
+                    const mediaType = readTracearrString(record, ['mediaType', 'item_type', 'type']) || 'unknown';
+                    const mediaTitle = readTracearrString(record, ['mediaTitle', 'title', 'item_name']) || 'Unknown Title';
+                    const idValue = readTracearrString(record, ['mediaId', 'itemId', 'ratingKey']);
+                    const fallbackId = pseudoItemId(mediaTitle, safeDate.toISOString());
+                    const parsedId = Number(idValue);
+                    const itemId = Number.isFinite(parsedId) && parsedId > 0 ? parsedId : fallbackId;
+
+                    const localDate = safeDate.toISOString();
+                    const [datePart, timePart = '00:00:00'] = localDate.split('T');
+
+                    return {
+                        date: datePart,
+                        time: timePart.replace('Z', ''),
+                        user_id: userId,
+                        item_name: mediaTitle,
+                        item_id: itemId,
+                        item_type: mediaType,
+                        duration: String(Math.max(0, Math.round(durationSeconds))),
+                        user_name: userName,
+                        user_has_image: false,
+                        client: readTracearrString(record, ['platform']),
+                        client_name: readTracearrString(record, ['player', 'playerName']),
+                        device: readTracearrString(record, ['device']),
+                        device_name: readTracearrString(record, ['device', 'player']),
+                        app: readTracearrString(record, ['product']),
+                        app_name: readTracearrString(record, ['product']),
+                    };
+                });
+        }
+
         const activity = await this.fetch<RawPlaybackActivity[]>('/user_usage_stats/UserPlaylist', {
             user_id: userId,
             days: days.toString()
@@ -217,6 +365,24 @@ class EmbyClient {
      * This endpoint is more reliable than per-event device fields on some plugin versions.
      */
     async getDeviceNameBreakdown(userId: string, days: number): Promise<DeviceBreakdownEntry[]> {
+        if (this.useTracearrHistory) {
+            const activity = await this.getUserPlaybackActivity(userId, days);
+            const byDevice = new Map<string, DeviceBreakdownEntry>();
+
+            for (const row of activity) {
+                const name = row.device_name || row.device || row.client_name || row.client || row.app_name || row.app || 'Unknown Device';
+                const minutes = Math.max(0, Number(row.duration || '0')) / 60;
+                const current = byDevice.get(name) || { name, minutes: 0, count: 0 };
+                current.minutes += minutes;
+                current.count += 1;
+                byDevice.set(name, current);
+            }
+
+            return [...byDevice.values()]
+                .filter((row) => row.minutes > 0)
+                .sort((a, b) => b.minutes - a.minutes);
+        }
+
         const report = await this.fetch<RawBreakdownRecord[]>('/user_usage_stats/DeviceName/BreakdownReport', {
             user_id: userId,
             days: String(days)

@@ -8,7 +8,7 @@ A beautiful, Spotify Wrapped-style year-in-review experience for your Emby media
 
 ## Fork Improvements
 
-This version (`emby-wrapped-ftp`) adds several features and improvements over the original:
+This version (`emby-wrapped`) adds several features and improvements over the original:
 
 - **Enhanced Music Statistics** - Detailed breakdown of top artists and tracks with full image support.
 - **Image Proxy & Caching** - Built-in image proxy to solve CORS issues and provide persistent caching for faster loading.
@@ -74,7 +74,7 @@ mkdir emby-wrapped && cd emby-wrapped
 version: '3.8'
 services:
   emby-wrapped:
-    image: ghcr.io/ctznsniiips/emby-wrapped-ftp:latest
+    image: ghcr.io/ctznsniiips/emby-wrapped:latest
     container_name: emby-wrapped
     ports:
       - "3000:3000"
@@ -119,8 +119,8 @@ docker-compose pull && docker-compose up -d
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/ctznsniiips/emby-wrapped-ftp.git
-cd emby-wrapped-ftp
+git clone https://github.com/ctznsniiips/emby-wrapped.git
+cd emby-wrapped
 ```
 
 2. Install dependencies:

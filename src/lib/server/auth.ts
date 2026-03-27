@@ -13,7 +13,7 @@ export interface AuthSession {
 // For persistence across restarts, swap this Map for a file or SQLite store.
 const sessionStore = new Map<string, AuthSession>();
 
-export function setAuthSession(cookies: Cookies, session: AuthSession): void {
+export function setAuthSession(cookies: Cookies, session: AuthSession, secure: boolean): void {
     // Generate a cryptographically random token - this is all the cookie holds
     const token = randomBytes(32).toString('hex');
     sessionStore.set(token, session);
@@ -22,7 +22,7 @@ export function setAuthSession(cookies: Cookies, session: AuthSession): void {
         path: '/',
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure,
         maxAge: 60 * 60 * 24 * 30
     });
 }

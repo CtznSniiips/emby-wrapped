@@ -140,6 +140,40 @@ function normalizeTracearrMediaType(value: string): string {
     return mediaType || 'unknown';
 }
 
+function readPositiveNumber(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveTotalPages(payload: Record<string, unknown>, pageSize: number, fetchedCount: number): number {
+    const pagination = (payload.pagination ?? payload.meta ?? payload.pageInfo) as Record<string, unknown> | undefined;
+
+    const directTotalPages =
+        readPositiveNumber(pagination?.totalPages) ??
+        readPositiveNumber(pagination?.pages) ??
+        readPositiveNumber(payload.totalPages) ??
+        readPositiveNumber(payload.pages) ??
+        readPositiveNumber(payload.lastPage);
+
+    if (directTotalPages) {
+        return Math.max(1, Math.ceil(directTotalPages));
+    }
+
+    const totalItems =
+        readPositiveNumber(pagination?.totalItems) ??
+        readPositiveNumber(pagination?.total) ??
+        readPositiveNumber(pagination?.count) ??
+        readPositiveNumber(payload.totalItems) ??
+        readPositiveNumber(payload.total) ??
+        readPositiveNumber(payload.count);
+
+    if (totalItems) {
+        return Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize)));
+    }
+
+    return fetchedCount >= pageSize ? 2 : 1;
+}
+
 export interface EmbyItem {
     Id: string;
     Name: string;
@@ -269,16 +303,16 @@ class EmbyClient {
 
         const payload = await response.json() as Record<string, unknown>;
         const items =
+            (Array.isArray(payload) && payload as TracearrRecord[]) ||
             (Array.isArray(payload.items) && payload.items as TracearrRecord[]) ||
             (Array.isArray(payload.data) && payload.data as TracearrRecord[]) ||
+            (Array.isArray((payload.data as Record<string, unknown> | undefined)?.items) &&
+                (payload.data as Record<string, unknown>).items as TracearrRecord[]) ||
             (Array.isArray(payload.history) && payload.history as TracearrRecord[]) ||
             (Array.isArray(payload.results) && payload.results as TracearrRecord[]) ||
             (Array.isArray(payload.records) && payload.records as TracearrRecord[]) ||
             [];
-
-        const pagination = (payload.pagination ?? payload.meta ?? payload.pageInfo) as Record<string, unknown> | undefined;
-        const totalPagesRaw = Number(pagination?.totalPages ?? pagination?.pages ?? 1);
-        const totalPages = Number.isFinite(totalPagesRaw) && totalPagesRaw > 0 ? totalPagesRaw : 1;
+        const totalPages = resolveTotalPages(payload, pageSize, items.length);
 
         return { items, totalPages };
     }

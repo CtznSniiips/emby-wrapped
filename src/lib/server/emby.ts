@@ -140,6 +140,11 @@ function formatEpisodeCode(seasonNumber: number, episodeNumber: number): string 
 
 function normalizeTracearrMediaType(value: string): string {
     const mediaType = value.toLowerCase().trim();
+    if (mediaType === 'tvchannel') return 'tvchannel';
+    if (mediaType === 'tv_channel') return 'tvchannel';
+    if (mediaType === 'live tv') return 'tvchannel';
+    if (mediaType === 'livetv') return 'tvchannel';
+    if (mediaType === 'channel') return 'tvchannel';
     if (mediaType === 'tv') return 'episode';
     if (mediaType === 'tvepisode') return 'episode';
     if (mediaType === 'episode') return 'episode';
@@ -456,10 +461,10 @@ class EmbyClient {
                     const mediaTypeRaw = readTracearrString(record, [
                         'mediaType',
                         'session.mediaType',
+                        'media.type',
+                        'item.type',
                         'item_type',
                         'type',
-                        'media.type',
-                        'item.type'
                     ]);
                     const mediaType = normalizeTracearrMediaType(mediaTypeRaw);
                     const mediaTitle = readTracearrString(record, [

@@ -245,13 +245,16 @@ class EmbyClient {
         page: number,
         pageSize: number,
         startDate: string,
-        endDate: string
+        endDate: string,
+        includeDateFilters: boolean
     ): Promise<{ items: TracearrRecord[]; totalPages: number; }> {
         const url = new URL(`${this.tracearrUrl}/api/v1/public/history`);
         url.searchParams.set('page', String(page));
         url.searchParams.set('pageSize', String(pageSize));
-        url.searchParams.set('startDate', startDate);
-        url.searchParams.set('endDate', endDate);
+        if (includeDateFilters) {
+            url.searchParams.set('startDate', startDate);
+            url.searchParams.set('endDate', endDate);
+        }
 
         const response = await fetch(url.toString(), {
             headers: {
@@ -268,6 +271,9 @@ class EmbyClient {
         const items =
             (Array.isArray(payload.items) && payload.items as TracearrRecord[]) ||
             (Array.isArray(payload.data) && payload.data as TracearrRecord[]) ||
+            (Array.isArray(payload.history) && payload.history as TracearrRecord[]) ||
+            (Array.isArray(payload.results) && payload.results as TracearrRecord[]) ||
+            (Array.isArray(payload.records) && payload.records as TracearrRecord[]) ||
             [];
 
         const pagination = (payload.pagination ?? payload.meta ?? payload.pageInfo) as Record<string, unknown> | undefined;
@@ -326,9 +332,17 @@ class EmbyClient {
             const tracearrRows: TracearrRecord[] = [];
             let page = 1;
             let totalPages = 1;
+            let includeDateFilters = true;
 
             do {
-                const pageData = await this.fetchTracearrHistoryPage(page, pageSize, dateOnly(startDate), dateOnly(endDate));
+                const pageData = await this.fetchTracearrHistoryPage(page, pageSize, dateOnly(startDate), dateOnly(endDate), includeDateFilters);
+                if (page === 1 && includeDateFilters && pageData.items.length === 0) {
+                    includeDateFilters = false;
+                    page = 1;
+                    totalPages = 1;
+                    tracearrRows.length = 0;
+                    continue;
+                }
                 tracearrRows.push(...pageData.items);
                 totalPages = Math.min(pageData.totalPages, maxPages);
                 page += 1;
@@ -341,16 +355,26 @@ class EmbyClient {
                         'userName',
                         'serverUsername',
                         'name',
+                        'session.userName',
+                        'session.user.username',
                         'user.username',
                         'user.name'
                     ]).toLowerCase().trim();
-                    const tracearrUserId = readTracearrString(record, ['userId', 'embyUserId', 'user.id']).toLowerCase().trim();
+                    const tracearrUserId = readTracearrString(record, [
+                        'userId',
+                        'embyUserId',
+                        'session.userId',
+                        'session.user.id',
+                        'user.id'
+                    ]).toLowerCase().trim();
                     return username === requestedUsername || tracearrUserId === userId.toLowerCase();
                 })
-                .map((record) => {
+                .flatMap((record): PlaybackActivity[] => {
                     const startedAt = readTracearrString(record, [
                         'startedAt',
+                        'session.startedAt',
                         'startTime',
+                        'session.startTime',
                         'createdAt',
                         'date',
                         'watchedAt',
@@ -363,15 +387,20 @@ class EmbyClient {
                         'duration',
                         'durationSeconds',
                         'durationSec',
+                        'session.durationSeconds',
                         'watchTimeSeconds',
                         'watchDuration',
-                        'watchedDuration'
+                        'watchedDuration',
+                        'playDuration',
+                        'playDurationSeconds'
                     ]);
                     const durationMs = readTracearrNumber(record, [
                         'durationMs',
+                        'session.durationMs',
                         'watchTimeMs',
                         'watchDurationMs',
-                        'watchedDurationMs'
+                        'watchedDurationMs',
+                        'playDurationMs'
                     ]);
                     const durationSeconds = durationSecondsRaw > 0
                         ? durationSecondsRaw
@@ -381,6 +410,7 @@ class EmbyClient {
 
                     const mediaTypeRaw = readTracearrString(record, [
                         'mediaType',
+                        'session.mediaType',
                         'item_type',
                         'type',
                         'media.type',
@@ -389,6 +419,7 @@ class EmbyClient {
                     const mediaType = normalizeTracearrMediaType(mediaTypeRaw);
                     const mediaTitle = readTracearrString(record, [
                         'mediaTitle',
+                        'session.mediaTitle',
                         'title',
                         'item_name',
                         'media.title',
@@ -397,6 +428,7 @@ class EmbyClient {
                     ]) || 'Unknown Title';
                     const idValue = readTracearrString(record, [
                         'mediaId',
+                        'session.mediaId',
                         'itemId',
                         'ratingKey',
                         'embyItemId',
@@ -406,10 +438,14 @@ class EmbyClient {
                     const fallbackId = pseudoItemId(mediaTitle, safeDate.toISOString());
                     const itemId = idValue || fallbackId;
 
-                    const localDate = safeDate.toISOString();
-                    const [datePart, timePart = '00:00:00'] = localDate.split('T');
+                    if (safeDate < startDate || safeDate > endDate) {
+                        return [];
+                    }
 
-                    return {
+                    const utcDate = safeDate.toISOString();
+                    const [datePart, timePart = '00:00:00'] = utcDate.split('T');
+
+                    return [{
                         date: datePart,
                         time: timePart.replace('Z', ''),
                         user_id: userId,
@@ -426,7 +462,7 @@ class EmbyClient {
                         app: readTracearrString(record, ['product']),
                         app_name: readTracearrString(record, ['product']),
                         _fromTracearr: true
-                    };
+                    }];
                 });
         }
 

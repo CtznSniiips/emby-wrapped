@@ -156,6 +156,27 @@ function normalizeTracearrMediaType(value: string): string {
     return mediaType || 'unknown';
 }
 
+function isTracearrLiveTvRecord(record: TracearrRecord): boolean {
+    const liveTvSignals = [
+        'channelId',
+        'channelName',
+        'channelNumber',
+        'stationId',
+        'stationName',
+        'session.channelId',
+        'session.channelName',
+        'session.channelNumber',
+        'media.channelId',
+        'media.channelName',
+        'media.channelNumber',
+        'item.channelId',
+        'item.channelName',
+        'item.channelNumber'
+    ];
+
+    return liveTvSignals.some((key) => readTracearrString(record, [key]).length > 0);
+}
+
 function readPositiveNumber(value: unknown): number | null {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -466,7 +487,10 @@ class EmbyClient {
                         'item_type',
                         'type',
                     ]);
-                    const mediaType = normalizeTracearrMediaType(mediaTypeRaw);
+                    let mediaType = normalizeTracearrMediaType(mediaTypeRaw);
+                    if (mediaType === 'audio' && isTracearrLiveTvRecord(record)) {
+                        mediaType = 'tvchannel';
+                    }
                     const mediaTitle = readTracearrString(record, [
                         'mediaTitle',
                         'session.mediaTitle',

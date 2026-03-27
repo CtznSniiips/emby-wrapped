@@ -23,7 +23,7 @@ export interface PlaybackActivity {
     time: string;
     user_id: string;
     item_name: string;
-    item_id: number;
+    item_id: number | string;
     item_type: string;
     duration: string;  // seconds as string
     remote_address?: string;
@@ -84,9 +84,25 @@ function normalizePlaybackActivityRecord(record: RawPlaybackActivity): PlaybackA
     };
 }
 
+function readTracearrValue(record: TracearrRecord, path: string): unknown {
+    if (Object.prototype.hasOwnProperty.call(record, path)) {
+        return record[path];
+    }
+
+    const parts = path.split('.');
+    let current: unknown = record;
+    for (const part of parts) {
+        if (!current || typeof current !== 'object') {
+            return undefined;
+        }
+        current = (current as Record<string, unknown>)[part];
+    }
+    return current;
+}
+
 function readTracearrString(record: TracearrRecord, keys: string[]): string {
     for (const key of keys) {
-        const value = record[key];
+        const value = readTracearrValue(record, key);
         if (value === undefined || value === null) continue;
         const str = String(value).trim();
         if (str.length > 0) return str;
@@ -108,6 +124,19 @@ function pseudoItemId(name: string, startedAt: string): number {
         hash |= 0;
     }
     return Math.abs(hash);
+}
+
+function normalizeTracearrMediaType(value: string): string {
+    const mediaType = value.toLowerCase().trim();
+    if (mediaType === 'tv') return 'episode';
+    if (mediaType === 'tvepisode') return 'episode';
+    if (mediaType === 'episode') return 'episode';
+    if (mediaType === 'film') return 'movie';
+    if (mediaType === 'movie') return 'movie';
+    if (mediaType === 'track') return 'audio';
+    if (mediaType === 'song') return 'audio';
+    if (mediaType === 'audio') return 'audio';
+    return mediaType || 'unknown';
 }
 
 export interface EmbyItem {
@@ -306,28 +335,75 @@ class EmbyClient {
 
             return tracearrRows
                 .filter((record) => {
-                    const username = readTracearrString(record, ['username', 'userName', 'serverUsername', 'name']).toLowerCase().trim();
-                    return username === requestedUsername;
+                    const username = readTracearrString(record, [
+                        'username',
+                        'userName',
+                        'serverUsername',
+                        'name',
+                        'user.username',
+                        'user.name'
+                    ]).toLowerCase().trim();
+                    const tracearrUserId = readTracearrString(record, ['userId', 'embyUserId', 'user.id']).toLowerCase().trim();
+                    return username === requestedUsername || tracearrUserId === userId.toLowerCase();
                 })
                 .map((record) => {
-                    const startedAt = readTracearrString(record, ['startedAt', 'startTime', 'createdAt', 'date']);
+                    const startedAt = readTracearrString(record, [
+                        'startedAt',
+                        'startTime',
+                        'createdAt',
+                        'date',
+                        'watchedAt',
+                        'lastViewedAt'
+                    ]);
                     const dateObj = startedAt ? new Date(startedAt) : new Date();
                     const isInvalidDate = Number.isNaN(dateObj.getTime());
                     const safeDate = isInvalidDate ? new Date() : dateObj;
-                    const durationSecondsRaw = readTracearrNumber(record, ['duration', 'durationSeconds', 'durationSec', 'watchTimeSeconds']);
-                    const durationMs = readTracearrNumber(record, ['durationMs', 'watchTimeMs']);
+                    const durationSecondsRaw = readTracearrNumber(record, [
+                        'duration',
+                        'durationSeconds',
+                        'durationSec',
+                        'watchTimeSeconds',
+                        'watchDuration',
+                        'watchedDuration'
+                    ]);
+                    const durationMs = readTracearrNumber(record, [
+                        'durationMs',
+                        'watchTimeMs',
+                        'watchDurationMs',
+                        'watchedDurationMs'
+                    ]);
                     const durationSeconds = durationSecondsRaw > 0
                         ? durationSecondsRaw
                         : durationMs > 0
                             ? Math.round(durationMs / 1000)
                             : 0;
 
-                    const mediaType = readTracearrString(record, ['mediaType', 'item_type', 'type']) || 'unknown';
-                    const mediaTitle = readTracearrString(record, ['mediaTitle', 'title', 'item_name']) || 'Unknown Title';
-                    const idValue = readTracearrString(record, ['mediaId', 'itemId', 'ratingKey']);
+                    const mediaTypeRaw = readTracearrString(record, [
+                        'mediaType',
+                        'item_type',
+                        'type',
+                        'media.type',
+                        'item.type'
+                    ]);
+                    const mediaType = normalizeTracearrMediaType(mediaTypeRaw);
+                    const mediaTitle = readTracearrString(record, [
+                        'mediaTitle',
+                        'title',
+                        'item_name',
+                        'media.title',
+                        'item.title',
+                        'item.name'
+                    ]) || 'Unknown Title';
+                    const idValue = readTracearrString(record, [
+                        'mediaId',
+                        'itemId',
+                        'ratingKey',
+                        'embyItemId',
+                        'item.id',
+                        'media.id'
+                    ]);
                     const fallbackId = pseudoItemId(mediaTitle, safeDate.toISOString());
-                    const parsedId = Number(idValue);
-                    const itemId = Number.isFinite(parsedId) && parsedId > 0 ? parsedId : fallbackId;
+                    const itemId = idValue || fallbackId;
 
                     const localDate = safeDate.toISOString();
                     const [datePart, timePart = '00:00:00'] = localDate.split('T');

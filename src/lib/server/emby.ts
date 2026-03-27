@@ -140,6 +140,7 @@ function formatEpisodeCode(seasonNumber: number, episodeNumber: number): string 
 
 function normalizeTracearrMediaType(value: string): string {
     const mediaType = value.toLowerCase().trim();
+    if (mediaType === 'live') return 'tvchannel';
     if (mediaType === 'tvchannel') return 'tvchannel';
     if (mediaType === 'tv_channel') return 'tvchannel';
     if (mediaType === 'live tv') return 'tvchannel';
@@ -154,27 +155,6 @@ function normalizeTracearrMediaType(value: string): string {
     if (mediaType === 'song') return 'audio';
     if (mediaType === 'audio') return 'audio';
     return mediaType || 'unknown';
-}
-
-function isTracearrLiveTvRecord(record: TracearrRecord): boolean {
-    const liveTvSignals = [
-        'channelId',
-        'channelName',
-        'channelNumber',
-        'stationId',
-        'stationName',
-        'session.channelId',
-        'session.channelName',
-        'session.channelNumber',
-        'media.channelId',
-        'media.channelName',
-        'media.channelNumber',
-        'item.channelId',
-        'item.channelName',
-        'item.channelNumber'
-    ];
-
-    return liveTvSignals.some((key) => readTracearrString(record, [key]).length > 0);
 }
 
 function readPositiveNumber(value: unknown): number | null {
@@ -487,10 +467,7 @@ class EmbyClient {
                         'item_type',
                         'type',
                     ]);
-                    let mediaType = normalizeTracearrMediaType(mediaTypeRaw);
-                    if (mediaType === 'audio' && isTracearrLiveTvRecord(record)) {
-                        mediaType = 'tvchannel';
-                    }
+                    const mediaType = normalizeTracearrMediaType(mediaTypeRaw);
                     const mediaTitle = readTracearrString(record, [
                         'mediaTitle',
                         'session.mediaTitle',

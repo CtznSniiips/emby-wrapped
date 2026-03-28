@@ -195,6 +195,16 @@ export async function getTracearrUserPlaybackActivity({
     let page = 1;
     let totalPages = 1;
     let includeDateFilters = true;
+    const localDateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: tracearrTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
 
     do {
         const pageData = await fetchTracearrHistoryPage(
@@ -351,12 +361,12 @@ export async function getTracearrUserPlaybackActivity({
                 return [];
             }
 
-            const utcDate = safeDate.toISOString();
-            const [datePart, timePart = '00:00:00'] = utcDate.split('T');
+            const localDateTime = localDateTimeFormatter.format(safeDate);
+            const [datePart, timePart = '00:00:00'] = localDateTime.split(' ');
 
             return [{
                 date: datePart,
-                time: timePart.replace('Z', ''),
+                time: timePart,
                 user_id: userId,
                 item_name: displayTitle,
                 item_id: itemId,

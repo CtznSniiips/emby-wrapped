@@ -76,19 +76,12 @@ function formatEpisodeCode(seasonNumber: number, episodeNumber: number): string 
 function normalizeTracearrMediaType(value: string): string {
     const mediaType = value.toLowerCase().trim();
     if (mediaType === 'live') return 'tvchannel';
-    if (mediaType === 'tvchannel') return 'tvchannel';
-    if (mediaType === 'tv_channel') return 'tvchannel';
-    if (mediaType === 'live tv') return 'tvchannel';
-    if (mediaType === 'livetv') return 'tvchannel';
-    if (mediaType === 'channel') return 'tvchannel';
     if (mediaType === 'tv') return 'episode';
     if (mediaType === 'tvepisode') return 'episode';
     if (mediaType === 'episode') return 'episode';
     if (mediaType === 'film') return 'movie';
     if (mediaType === 'movie') return 'movie';
     if (mediaType === 'track') return 'audio';
-    if (mediaType === 'song') return 'audio';
-    if (mediaType === 'audio') return 'audio';
     return mediaType || 'unknown';
 }
 

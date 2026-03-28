@@ -1,3 +1,5 @@
+import { env } from '$env/dynamic/private';
+
 export interface TracearrPlaybackActivity {
     date: string;
     time: string;
@@ -122,6 +124,7 @@ function resolveTotalPages(payload: Record<string, unknown>, pageSize: number, f
 async function fetchTracearrHistoryPage(
     tracearrUrl: string,
     tracearrApiKey: string,
+    timezone: string,
     page: number,
     pageSize: number,
     startDate: string,
@@ -131,6 +134,7 @@ async function fetchTracearrHistoryPage(
     const url = new URL(`${tracearrUrl}/api/v1/public/history`);
     url.searchParams.set('page', String(page));
     url.searchParams.set('pageSize', String(pageSize));
+    url.searchParams.set('timezone', timezone);
     if (includeDateFilters) {
         url.searchParams.set('startDate', startDate);
         url.searchParams.set('endDate', endDate);
@@ -179,6 +183,7 @@ export async function getTracearrUserPlaybackActivity({
     days
 }: TracearrActivityOptions): Promise<TracearrPlaybackActivity[]> {
     const requestedUsername = username.toLowerCase().trim();
+    const tracearrTimezone = env.TRACEARR_TIMEZONE || env.APP_TIMEZONE || 'America/New_York';
     const endDate = new Date();
     const startDate = new Date();
     startDate.setUTCDate(endDate.getUTCDate() - Math.max(1, days));
@@ -195,6 +200,7 @@ export async function getTracearrUserPlaybackActivity({
         const pageData = await fetchTracearrHistoryPage(
             tracearrUrl,
             tracearrApiKey,
+            tracearrTimezone,
             page,
             pageSize,
             dateOnly(startDate),

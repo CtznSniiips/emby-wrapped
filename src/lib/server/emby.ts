@@ -335,6 +335,40 @@ class EmbyClient {
     }
 
     /**
+     * Search multiple items by name in batches
+     */
+    async searchItemsByName(userId: string, names: string[], type: 'Movie' | 'Series'): Promise<EmbyItem[]> {
+        if (names.length === 0) return [];
+
+        interface ItemsResponse {
+            Items: EmbyItem[];
+        }
+
+        const results: EmbyItem[] = [];
+        const BATCH = 5;
+        for (let i = 0; i < names.length; i += BATCH) {
+            const batch = names.slice(i, i + BATCH);
+            const fetched = await Promise.all(batch.map(async (name) => {
+                try {
+                    const response = await this.fetch<ItemsResponse>(`/Users/${userId}/Items`, {
+                        searchTerm: name,
+                        IncludeItemTypes: type,
+                        Recursive: 'true',
+                        Limit: '1',
+                        Fields: 'Genres,SeriesId,Studios,People,ProductionYear,PremiereDate,CommunityRating,OfficialRating,ImageTags,BackdropImageTags,SeriesPrimaryImageTag'
+                    });
+                    return response.Items ?? [];
+                } catch {
+                    return [];
+                }
+            }));
+            fetched.forEach(items => results.push(...items));
+        }
+
+        return results;
+    }
+
+    /**
      * Get image URL for an item
      */
     getImageUrl(itemId: string, imageType: 'Primary' | 'Backdrop' = 'Primary', maxWidth: number = 400): string {

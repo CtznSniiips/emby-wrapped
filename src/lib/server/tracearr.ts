@@ -133,6 +133,20 @@ function readPositiveNumber(value: unknown): number | null {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function buildUsernameAliasMap(): Map<string, string> {
+    const raw = env.TRACEARR_USERNAME_ALIASES || '';
+    const map = new Map<string, string>();
+
+    for (const pair of raw.split(',')) {
+        const [oldName, newName] = pair.split(':');
+        if (oldName?.trim() && newName?.trim()) {
+            map.set(oldName.trim().toLowerCase(), newName.trim().toLowerCase());
+        }
+    }
+
+    return map;
+}
+
 function resolveTotalPages(
     payload: Record<string, unknown>,
     page: number,
@@ -452,8 +466,10 @@ export async function getAllTracearrPlaybackActivity({
         idToUsername.set(id, name);
     }
 
+    const aliasMap = buildUsernameAliasMap();
+
     for (const record of allRows) {
-        const tracearrUsername = readTracearrString(record, [
+        let tracearrUsername = readTracearrString(record, [
             'username',
             'userName',
             'serverUsername',
@@ -463,6 +479,7 @@ export async function getAllTracearrPlaybackActivity({
             'user.username',
             'user.name'
         ]).toLowerCase().trim();
+        tracearrUsername = aliasMap.get(tracearrUsername) ?? tracearrUsername;
 
         const embyUserId = usernameToId.get(tracearrUsername);
         if (!embyUserId) continue;
@@ -537,9 +554,11 @@ export async function getTracearrUserPlaybackActivity({
         page += 1;
     } while (page <= totalPages);
 
+    const aliasMap = buildUsernameAliasMap();
+
     return tracearrRows
         .filter((record) => {
-            const tracearrUsername = readTracearrString(record, [
+            let tracearrUsername = readTracearrString(record, [
                 'username',
                 'userName',
                 'serverUsername',
@@ -549,6 +568,7 @@ export async function getTracearrUserPlaybackActivity({
                 'user.username',
                 'user.name'
             ]).toLowerCase().trim();
+            tracearrUsername = aliasMap.get(tracearrUsername) ?? tracearrUsername;
             const tracearrUserId = readTracearrString(record, [
                 'userId',
                 'embyUserId',

@@ -17,6 +17,7 @@ services:
       - SEERR_API_KEY=${SEERR_API_KEY:-}
       - TRACEARR_URL=${TRACEARR_URL:-}
       - TRACEARR_API_KEY=${TRACEARR_API_KEY:-}
+      - TRACEARR_USERNAME_ALIASES=${TRACEARR_USERNAME_ALIASES:-}
     volumes:
       # Mount custom music files (optional)
       - ./music:/app/static/music:ro

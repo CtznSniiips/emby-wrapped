@@ -52,6 +52,7 @@ This version (`emby-wrapped`) adds several features and improvements over the or
    - Install and restart Emby server
    - This plugin tracks detailed playback history needed for stats
    - If you use Tracearr integration (`TRACEARR_URL` + `TRACEARR_API_KEY`), Emby Wrapped can read playback history from Tracearr instead
+   - If Tracearr usernames differ from current Emby usernames, use `TRACEARR_USERNAME_ALIASES` to map old names to current names
 
 3. **API Key**
    - Go to Emby Dashboard → API Keys
@@ -86,6 +87,7 @@ services:
       - SEERR_API_KEY=   # Optional: Overseerr/Jellyseerr API key
       - TRACEARR_URL=    # Optional: Tracearr URL (uses Tracearr history instead of Playback Reporting)
       - TRACEARR_API_KEY=# Optional: Tracearr public API key (format: trr_pub_*)
+      - TRACEARR_USERNAME_ALIASES= # Optional: oldname1:newname1,oldname2:newname2
       - PUBLIC_URL=      # Optional: for share links
       - CACHE_TTL=86400  # Optional
       - FILTER_USER_ID=  # Optional: filter by user's library
@@ -164,6 +166,7 @@ npm run preview
 | `SEERR_API_KEY` | Seerr/Overseerr/Jellyseerr API key used to fetch requests (used with `SEERR_URL`) | No |
 | `TRACEARR_URL` | Tracearr base URL (e.g., `http://192.168.1.100:3001`). When set with `TRACEARR_API_KEY`, history data is pulled from Tracearr instead of Emby's Playback Reporting plugin. | No |
 | `TRACEARR_API_KEY` | Tracearr Public API key (`trr_pub_*`) used with `TRACEARR_URL`. | No |
+| `TRACEARR_USERNAME_ALIASES` | Optional case-insensitive username mapping for Tracearr-to-Emby matching after renames. Format: `oldname1:newname1,oldname2:newname2`. | No |
 | `PUBLIC_URL` | Public URL for share links (defaults to request origin) | No |
 | `ANALYTICS_SCRIPT` | Analytics script tag (e.g., Umami, Plausible) to inject into page head | No |
 | `FILTER_USER_ID` | Emby User ID to use for library filtering (useful for hiding NSFW content) | No |

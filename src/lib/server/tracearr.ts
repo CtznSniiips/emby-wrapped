@@ -238,6 +238,13 @@ function normalizeTracearrRecord(
         return null;
     }
 
+    const stoppedAt = readTracearrString(record, [
+        'stoppedAt',
+        'session.stoppedAt',
+        'endTime',
+        'session.endTime',
+        'stopTime'
+    ]);
     const durationSecondsRaw = readTracearrNumber(record, [
         'duration',
         'durationSeconds',
@@ -257,11 +264,16 @@ function normalizeTracearrRecord(
         'watchedDurationMs',
         'playDurationMs'
     ]);
+    const computedDuration = (startedAt && stoppedAt)
+        ? Math.round((new Date(stoppedAt).getTime() - new Date(startedAt).getTime()) / 1000)
+        : 0;
     const durationSeconds = durationSecondsRaw > 0
         ? durationSecondsRaw
-        : durationMs > 0
-            ? Math.round(durationMs / 1000)
-            : 0;
+        : computedDuration > 0
+            ? computedDuration
+            : durationMs > 0
+                ? Math.round(durationMs / 1000)
+                : 0;
 
     const mediaTypeRaw = readTracearrString(record, [
         'mediaType',

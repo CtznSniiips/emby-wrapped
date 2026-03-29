@@ -116,15 +116,15 @@ export interface EmbyItem {
 }
 
 class EmbyClient {
-    private get tracearrUrl(): string {
+    get tracearrUrl(): string {
         return (env.TRACEARR_URL || '').trim().replace(/\/$/, '');
     }
 
-    private get tracearrApiKey(): string {
+    get tracearrApiKey(): string {
         return (env.TRACEARR_API_KEY || '').trim();
     }
 
-    private get useTracearrHistory(): boolean {
+    get useTracearrHistory(): boolean {
         return Boolean(this.tracearrUrl && this.tracearrApiKey);
     }
 

@@ -208,12 +208,262 @@ async function fetchTracearrHistoryPage(
     return { items, totalPages };
 }
 
+function normalizeTracearrRecord(
+    record: TracearrRecord,
+    userId: string,
+    username: string,
+    startDate: Date,
+    endDate: Date,
+    tracearrTimezone: string
+): TracearrPlaybackActivity | null {
+    const startedAt = readTracearrString(record, [
+        'startedAt',
+        'session.startedAt',
+        'startTime',
+        'session.startTime',
+        'createdAt',
+        'date',
+        'watchedAt',
+        'lastViewedAt'
+    ]);
+    const dateObj = startedAt ? new Date(startedAt) : new Date();
+    const isInvalidDate = Number.isNaN(dateObj.getTime());
+    const safeDate = isInvalidDate ? new Date() : dateObj;
+    if (safeDate < startDate || safeDate > endDate) {
+        return null;
+    }
+
+    const durationSecondsRaw = readTracearrNumber(record, [
+        'duration',
+        'durationSeconds',
+        'durationSec',
+        'session.durationSeconds',
+        'watchTimeSeconds',
+        'watchDuration',
+        'watchedDuration',
+        'playDuration',
+        'playDurationSeconds'
+    ]);
+    const durationMs = readTracearrNumber(record, [
+        'durationMs',
+        'session.durationMs',
+        'watchTimeMs',
+        'watchDurationMs',
+        'watchedDurationMs',
+        'playDurationMs'
+    ]);
+    const durationSeconds = durationSecondsRaw > 0
+        ? durationSecondsRaw
+        : durationMs > 0
+            ? Math.round(durationMs / 1000)
+            : 0;
+
+    const mediaTypeRaw = readTracearrString(record, [
+        'mediaType',
+        'session.mediaType',
+        'media.type',
+        'item.type',
+        'item_type',
+        'type'
+    ]);
+    let mediaType = normalizeTracearrMediaType(mediaTypeRaw);
+    if (isTracearrMisclassifiedLiveTv(record, mediaType)) {
+        mediaType = 'tvchannel';
+    }
+    if (mediaType === 'unknown' && mediaTypeRaw) {
+        console.warn('Unrecognized Tracearr mediaType:', mediaTypeRaw);
+    }
+
+    const mediaTitle = readTracearrString(record, [
+        'mediaTitle',
+        'session.mediaTitle',
+        'title',
+        'item_name',
+        'media.title',
+        'item.title',
+        'item.name'
+    ]) || 'Unknown Title';
+    const seriesTitle = readTracearrString(record, [
+        'seriesTitle',
+        'showTitle',
+        'tvShowTitle',
+        'seriesName',
+        'grandparentTitle',
+        'media.seriesTitle',
+        'media.seriesName',
+        'item.seriesName',
+        'item.seriesTitle',
+        'item.parentTitle',
+        'parentTitle',
+        'parent.title',
+        'session.seriesTitle'
+    ]);
+    const seasonNumber = readTracearrNumber(record, [
+        'seasonNumber',
+        'season',
+        'parentIndexNumber',
+        'media.seasonNumber',
+        'item.parentIndexNumber',
+        'session.seasonNumber'
+    ]);
+    const episodeNumber = readTracearrNumber(record, [
+        'episodeNumber',
+        'episode',
+        'indexNumber',
+        'media.episodeNumber',
+        'item.indexNumber',
+        'session.episodeNumber'
+    ]);
+    const episodeCode = formatEpisodeCode(seasonNumber, episodeNumber);
+    const normalizedSeriesTitle = seriesTitle.trim();
+    const normalizedMediaTitle = mediaTitle.trim();
+    const composedEpisodeTitle = [episodeCode, normalizedMediaTitle].filter(Boolean).join(' - ');
+    const displayTitle = mediaType === 'episode' && normalizedSeriesTitle
+        ? [normalizedSeriesTitle, composedEpisodeTitle || normalizedMediaTitle].filter(Boolean).join(' - ')
+        : normalizedMediaTitle || 'Unknown Title';
+    const idValue = readTracearrString(record, [
+        'mediaId',
+        'session.mediaId',
+        'itemId',
+        'ratingKey',
+        'embyItemId',
+        'item.id',
+        'media.id'
+    ]);
+    const fallbackId = pseudoItemId(mediaTitle, safeDate.toISOString());
+    const itemId = idValue || fallbackId;
+
+    const localDateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: tracearrTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    const localDateTime = localDateTimeFormatter.format(safeDate);
+    const [datePart, timePart = '00:00:00'] = localDateTime.split(' ');
+
+    return {
+        date: datePart,
+        time: timePart,
+        user_id: userId,
+        item_name: displayTitle,
+        item_id: itemId,
+        item_type: mediaType,
+        duration: String(Math.max(0, Math.round(durationSeconds))),
+        user_name: username,
+        user_has_image: false,
+        client: readTracearrString(record, ['platform']),
+        client_name: readTracearrString(record, ['player', 'playerName']),
+        device: readTracearrString(record, ['device']),
+        device_name: readTracearrString(record, ['device', 'player']),
+        app: readTracearrString(record, ['product']),
+        app_name: readTracearrString(record, ['product']),
+        _fromTracearr: true
+    };
+}
+
 interface TracearrActivityOptions {
     tracearrUrl: string;
     tracearrApiKey: string;
     userId: string;
     username: string;
     days: number;
+}
+
+interface TracearrAllActivityOptions {
+    tracearrUrl: string;
+    tracearrApiKey: string;
+    users: Map<string, string>;
+    days: number;
+}
+
+export async function getAllTracearrPlaybackActivity({
+    tracearrUrl,
+    tracearrApiKey,
+    users,
+    days
+}: TracearrAllActivityOptions): Promise<Map<string, TracearrPlaybackActivity[]>> {
+    const tracearrTimezone = env.TRACEARR_TIMEZONE || env.APP_TIMEZONE || 'America/New_York';
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setUTCDate(endDate.getUTCDate() - Math.max(1, days));
+    const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
+
+    const pageSize = 100;
+    const maxPages = 500;
+    const allRows: TracearrRecord[] = [];
+    let page = 1;
+    let totalPages = 1;
+    let includeDateFilters = true;
+
+    do {
+        const pageData = await fetchTracearrHistoryPage(
+            tracearrUrl,
+            tracearrApiKey,
+            tracearrTimezone,
+            page,
+            pageSize,
+            dateOnly(startDate),
+            dateOnly(endDate),
+            includeDateFilters
+        );
+        if (page === 1 && includeDateFilters && pageData.items.length === 0) {
+            includeDateFilters = false;
+            page = 1;
+            totalPages = 1;
+            allRows.length = 0;
+            continue;
+        }
+        allRows.push(...pageData.items);
+        totalPages = Math.min(pageData.totalPages, maxPages);
+        page += 1;
+    } while (page <= totalPages);
+
+    const usernameToId = new Map<string, string>();
+    for (const [id, name] of users) {
+        usernameToId.set(name.toLowerCase().trim(), id);
+    }
+
+    const result = new Map<string, TracearrPlaybackActivity[]>();
+    const idToUsername = new Map<string, string>();
+    for (const [id, name] of users) {
+        result.set(id, []);
+        idToUsername.set(id, name);
+    }
+
+    for (const record of allRows) {
+        const tracearrUsername = readTracearrString(record, [
+            'username',
+            'userName',
+            'serverUsername',
+            'name',
+            'session.userName',
+            'session.user.username',
+            'user.username',
+            'user.name'
+        ]).toLowerCase().trim();
+
+        const embyUserId = usernameToId.get(tracearrUsername);
+        if (!embyUserId) continue;
+
+        const activity = normalizeTracearrRecord(
+            record,
+            embyUserId,
+            idToUsername.get(embyUserId) ?? '',
+            startDate,
+            endDate,
+            tracearrTimezone
+        );
+        if (!activity) continue;
+
+        result.get(embyUserId)?.push(activity);
+    }
+
+    return result;
 }
 
 export async function getTracearrUserPlaybackActivity({
@@ -236,16 +486,6 @@ export async function getTracearrUserPlaybackActivity({
     let page = 1;
     let totalPages = 1;
     let includeDateFilters = true;
-    const localDateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: tracearrTimezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    });
 
     do {
         const pageData = await fetchTracearrHistoryPage(
@@ -292,142 +532,14 @@ export async function getTracearrUserPlaybackActivity({
             return tracearrUsername === requestedUsername || tracearrUserId === userId.toLowerCase();
         })
         .flatMap((record): TracearrPlaybackActivity[] => {
-            const startedAt = readTracearrString(record, [
-                'startedAt',
-                'session.startedAt',
-                'startTime',
-                'session.startTime',
-                'createdAt',
-                'date',
-                'watchedAt',
-                'lastViewedAt'
-            ]);
-            const dateObj = startedAt ? new Date(startedAt) : new Date();
-            const isInvalidDate = Number.isNaN(dateObj.getTime());
-            const safeDate = isInvalidDate ? new Date() : dateObj;
-            const durationSecondsRaw = readTracearrNumber(record, [
-                'duration',
-                'durationSeconds',
-                'durationSec',
-                'session.durationSeconds',
-                'watchTimeSeconds',
-                'watchDuration',
-                'watchedDuration',
-                'playDuration',
-                'playDurationSeconds'
-            ]);
-            const durationMs = readTracearrNumber(record, [
-                'durationMs',
-                'session.durationMs',
-                'watchTimeMs',
-                'watchDurationMs',
-                'watchedDurationMs',
-                'playDurationMs'
-            ]);
-            const durationSeconds = durationSecondsRaw > 0
-                ? durationSecondsRaw
-                : durationMs > 0
-                    ? Math.round(durationMs / 1000)
-                    : 0;
-
-            const mediaTypeRaw = readTracearrString(record, [
-                'mediaType',
-                'session.mediaType',
-                'media.type',
-                'item.type',
-                'item_type',
-                'type'
-            ]);
-            let mediaType = normalizeTracearrMediaType(mediaTypeRaw);
-            if (isTracearrMisclassifiedLiveTv(record, mediaType)) {
-                mediaType = 'tvchannel';
-            }
-            if (mediaType === 'unknown' && mediaTypeRaw) {
-                console.warn('Unrecognized Tracearr mediaType:', mediaTypeRaw);
-            }
-            const mediaTitle = readTracearrString(record, [
-                'mediaTitle',
-                'session.mediaTitle',
-                'title',
-                'item_name',
-                'media.title',
-                'item.title',
-                'item.name'
-            ]) || 'Unknown Title';
-            const seriesTitle = readTracearrString(record, [
-                'seriesTitle',
-                'showTitle',
-                'tvShowTitle',
-                'seriesName',
-                'grandparentTitle',
-                'media.seriesTitle',
-                'media.seriesName',
-                'item.seriesName',
-                'item.seriesTitle',
-                'item.parentTitle',
-                'parentTitle',
-                'parent.title',
-                'session.seriesTitle'
-            ]);
-            const seasonNumber = readTracearrNumber(record, [
-                'seasonNumber',
-                'season',
-                'parentIndexNumber',
-                'media.seasonNumber',
-                'item.parentIndexNumber',
-                'session.seasonNumber'
-            ]);
-            const episodeNumber = readTracearrNumber(record, [
-                'episodeNumber',
-                'episode',
-                'indexNumber',
-                'media.episodeNumber',
-                'item.indexNumber',
-                'session.episodeNumber'
-            ]);
-            const episodeCode = formatEpisodeCode(seasonNumber, episodeNumber);
-            const normalizedSeriesTitle = seriesTitle.trim();
-            const normalizedMediaTitle = mediaTitle.trim();
-            const composedEpisodeTitle = [episodeCode, normalizedMediaTitle].filter(Boolean).join(' - ');
-            const displayTitle = mediaType === 'episode' && normalizedSeriesTitle
-                ? [normalizedSeriesTitle, composedEpisodeTitle || normalizedMediaTitle].filter(Boolean).join(' - ')
-                : normalizedMediaTitle || 'Unknown Title';
-            const idValue = readTracearrString(record, [
-                'mediaId',
-                'session.mediaId',
-                'itemId',
-                'ratingKey',
-                'embyItemId',
-                'item.id',
-                'media.id'
-            ]);
-            const fallbackId = pseudoItemId(mediaTitle, safeDate.toISOString());
-            const itemId = idValue || fallbackId;
-
-            if (safeDate < startDate || safeDate > endDate) {
-                return [];
-            }
-
-            const localDateTime = localDateTimeFormatter.format(safeDate);
-            const [datePart, timePart = '00:00:00'] = localDateTime.split(' ');
-
-            return [{
-                date: datePart,
-                time: timePart,
-                user_id: userId,
-                item_name: displayTitle,
-                item_id: itemId,
-                item_type: mediaType,
-                duration: String(Math.max(0, Math.round(durationSeconds))),
-                user_name: username,
-                user_has_image: false,
-                client: readTracearrString(record, ['platform']),
-                client_name: readTracearrString(record, ['player', 'playerName']),
-                device: readTracearrString(record, ['device']),
-                device_name: readTracearrString(record, ['device', 'player']),
-                app: readTracearrString(record, ['product']),
-                app_name: readTracearrString(record, ['product']),
-                _fromTracearr: true
-            }];
+            const normalized = normalizeTracearrRecord(
+                record,
+                userId,
+                username,
+                startDate,
+                endDate,
+                tracearrTimezone
+            );
+            return normalized ? [normalized] : [];
         });
 }

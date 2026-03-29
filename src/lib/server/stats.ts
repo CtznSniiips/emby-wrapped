@@ -530,6 +530,54 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         console.warn('Failed to fetch item details:', e);
     }
 
+    // For Tracearr records, item_id is a pseudo hash so itemDetails won't have them.
+    // Resolve genres by searching Emby by title for unique movies and series names.
+    if (videoActivity.some(a => a._fromTracearr)) {
+        const missingMovieTitles = new Set<string>();
+        const missingSeriesNames = new Set<string>();
+
+        for (const activity of videoActivity) {
+            if (!activity._fromTracearr) continue;
+            if (itemDetails.has(String(activity.item_id))) continue;
+
+            const itemType = activity.item_type.toLowerCase();
+            if (itemType === 'movie') {
+                missingMovieTitles.add(activity.item_name);
+            } else if (itemType === 'episode') {
+                const seriesName = activity.item_name.split(' - ')[0]?.trim();
+                if (seriesName) missingSeriesNames.add(seriesName);
+            }
+        }
+
+        try {
+            const [movieResults, seriesResults] = await Promise.all([
+                emby.searchItemsByName(filterUserId, [...missingMovieTitles], 'Movie'),
+                emby.searchItemsByName(filterUserId, [...missingSeriesNames], 'Series')
+            ]);
+
+            const movieByName = new Map(movieResults.map(i => [i.Name.toLowerCase(), i]));
+            const seriesByName = new Map(seriesResults.map(i => [i.Name.toLowerCase(), i]));
+
+            for (const activity of videoActivity) {
+                if (!activity._fromTracearr) continue;
+                if (itemDetails.has(String(activity.item_id))) continue;
+
+                const itemType = activity.item_type.toLowerCase();
+                if (itemType === 'movie') {
+                    const found = movieByName.get(activity.item_name.toLowerCase());
+                    if (found) itemDetails.set(String(activity.item_id), found);
+                } else if (itemType === 'episode') {
+                    const seriesName = activity.item_name.split(' - ')[0]?.trim().toLowerCase();
+                    if (!seriesName) continue;
+                    const found = seriesByName.get(seriesName);
+                    if (found) itemDetails.set(String(activity.item_id), found);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to resolve Tracearr item genres by name:', e);
+        }
+    }
+
     // Filter video activity to only include items the filter user has permission to access
     const accessibleVideoActivity = videoActivity.filter(a => a._fromTracearr || itemDetails.has(String(a.item_id)));
     const streakTimeZone = getAppTimeZone();

@@ -304,6 +304,14 @@ export async function getTracearrUserPlaybackActivity({
                 'type'
             ]);
             const mediaType = normalizeTracearrMediaType(mediaTypeRaw);
+            if (mediaType === 'audio') {
+                console.log('AUDIO record:', JSON.stringify({
+                    mediaTypeRaw,
+                    mediaTitle: readTracearrString(record, ['mediaTitle', 'title']),
+                    rawType: (record as Record<string, unknown>)['type'],
+                    rawMediaType: (record as Record<string, unknown>)['mediaType']
+                }));
+            }
             if (mediaType === 'unknown' && mediaTypeRaw) {
                 console.warn('Unrecognized Tracearr mediaType:', mediaTypeRaw);
             }

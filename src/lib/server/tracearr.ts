@@ -133,7 +133,12 @@ function readPositiveNumber(value: unknown): number | null {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function resolveTotalPages(payload: Record<string, unknown>, pageSize: number, fetchedCount: number): number {
+function resolveTotalPages(
+    payload: Record<string, unknown>,
+    page: number,
+    pageSize: number,
+    fetchedCount: number
+): number {
     const pagination = (payload.pagination ?? payload.meta ?? payload.pageInfo) as Record<string, unknown> | undefined;
 
     const directTotalPages =
@@ -159,7 +164,7 @@ function resolveTotalPages(payload: Record<string, unknown>, pageSize: number, f
         return Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize)));
     }
 
-    return fetchedCount >= pageSize ? 2 : 1;
+    return fetchedCount >= pageSize ? page + 1 : page;
 }
 
 async function fetchTracearrHistoryPage(
@@ -203,7 +208,7 @@ async function fetchTracearrHistoryPage(
         (Array.isArray(payload.results) && payload.results as TracearrRecord[]) ||
         (Array.isArray(payload.records) && payload.records as TracearrRecord[]) ||
         [];
-    const totalPages = resolveTotalPages(payload, pageSize, items.length);
+    const totalPages = resolveTotalPages(payload, page, pageSize, items.length);
 
     return { items, totalPages };
 }
@@ -505,8 +510,18 @@ export async function getTracearrUserPlaybackActivity({
             tracearrRows.length = 0;
             continue;
         }
+
+        console.log(
+            `Tracearr page ${page}/${totalPages}, got ${pageData.items.length} items, resolved totalPages: ${pageData.totalPages}`
+        );
+
         tracearrRows.push(...pageData.items);
-        totalPages = Math.min(pageData.totalPages, maxPages);
+        totalPages = Math.min(Math.max(pageData.totalPages, page), maxPages);
+
+        if (pageData.items.length < pageSize) {
+            break;
+        }
+
         page += 1;
     } while (page <= totalPages);
 

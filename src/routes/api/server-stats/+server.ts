@@ -211,7 +211,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
         if (itemIdList.length > 0 && fetchUserId) {
             try {
                 // Batch fetch items
-                for (let i = 0; i < Math.min(itemIdList.length, 500); i += 50) { // Limit to top 500 unique items to prevent massive requests
+                for (let i = 0; i < itemIdList.length; i += 50) {
                     const batch = itemIdList.slice(i, i + 50);
                     const items = await emby.getItems(fetchUserId, batch);
                     items.forEach(item => itemDetails.set(item.Id, item));
@@ -242,7 +242,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
 
                 // Check permission / existence
                 // If filterUserId is set, we strictly require the item to be found in itemDetails
-                if (filterUserId && !itemDetails.has(String(item.item_id))) {
+                if (filterUserId && !item._fromTracearr && !itemDetails.has(String(item.item_id))) {
                     continue;
                 }
 

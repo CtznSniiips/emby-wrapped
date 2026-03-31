@@ -503,7 +503,7 @@ export async function getTracearrUserPlaybackActivity({
 
     const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
     const pageSize = 100;
-    const maxPages = 100;
+    const maxPages = 500;
     const tracearrRows: TracearrRecord[] = [];
     let page = 1;
     let totalPages = 1;
@@ -534,10 +534,6 @@ export async function getTracearrUserPlaybackActivity({
 
         tracearrRows.push(...pageData.items);
         totalPages = Math.min(Math.max(pageData.totalPages, page), maxPages);
-
-        if (pageData.items.length < pageSize) {
-            break;
-        }
 
         page += 1;
     } while (page <= totalPages);

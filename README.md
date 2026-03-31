@@ -19,6 +19,7 @@ This version (`emby-wrapped`) adds several features and improvements over the or
 - **URL parameters** - Provide URLs with a pre-selected time-frame
 - **Emby authentication** - Added security via Emby authentication. Users must log in to see stats
 - **Seerr integration** - Optional Seerr integration showing number of requests and broken down by movie, series, and user
+- **Tracearr integration** - The Emby Playback Reporting Plugin is no longer required - you can use history data from Tracearr instead 
 
 ## Screenshots
 
@@ -51,10 +52,13 @@ This version (`emby-wrapped`) adds several features and improvements over the or
    - Search for "Playback Reporting"
    - Install and restart Emby server
    - This plugin tracks detailed playback history needed for stats
+3. [**Tracearr**](https://github.com/connorgallopo/tracearr) (optional)
    - If you use Tracearr integration (`TRACEARR_URL` + `TRACEARR_API_KEY`), Emby Wrapped can read playback history from Tracearr instead
    - If Tracearr usernames differ from current Emby usernames, use `TRACEARR_USERNAME_ALIASES` to map old names to current names
-
-3. **API Key**
+   - If both the Playback Reporting Plugin and Tracearr are configured, Tracearr data will be used
+4. [**Seerr**](https://github.com/seerr-team/seerr) (optional)
+   - Enable to view request stats
+5. **API Key**
    - Go to Emby Dashboard → API Keys
    - Create a new API key for "Emby Wrapped"
    - Copy the key for configuration
@@ -221,7 +225,7 @@ Add `?YYYY` or `?MM-YYYY` to your url to pre-select the time period where `MM` i
 - Check that your `EMBY_API_KEY` has sufficient permissions
 
 ### Stats seem incomplete
-- Make sure the **Playback Reporting** plugin is installed
+- Make sure the **Playback Reporting** plugin is installed (or that Tracearr is running and configured)
 - The plugin needs time to collect data - it only tracks plays after installation
 - Check the date range - Emby Wrapped shows current year stats
 

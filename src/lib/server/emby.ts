@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { getTracearrUserPlaybackActivity } from './tracearr';
 
 export interface EmbyUser {
     Id: string;
@@ -23,7 +24,7 @@ export interface PlaybackActivity {
     time: string;
     user_id: string;
     item_name: string;
-    item_id: number;
+    item_id: number | string;
     item_type: string;
     duration: string;  // seconds as string
     remote_address?: string;
@@ -35,6 +36,7 @@ export interface PlaybackActivity {
     device_name?: string;
     app?: string;
     app_name?: string;
+    _fromTracearr?: boolean;
     [key: string]: string | number | boolean | undefined;
 }
 
@@ -83,6 +85,7 @@ function normalizePlaybackActivityRecord(record: RawPlaybackActivity): PlaybackA
     };
 }
 
+
 export interface EmbyItem {
     Id: string;
     Name: string;
@@ -113,6 +116,18 @@ export interface EmbyItem {
 }
 
 class EmbyClient {
+    get tracearrUrl(): string {
+        return (env.TRACEARR_URL || '').trim().replace(/\/$/, '');
+    }
+
+    get tracearrApiKey(): string {
+        return (env.TRACEARR_API_KEY || '').trim();
+    }
+
+    get useTracearrHistory(): boolean {
+        return Boolean(this.tracearrUrl && this.tracearrApiKey);
+    }
+
     private get baseUrl(): string {
         const configured =
             env.EMBY_URL || env.EMBY_SERVER_URL; // EMBY_SERVER_URL kept for backwards compatibility
@@ -204,6 +219,22 @@ class EmbyClient {
      * Get playback activity for a specific user from the Playback Reporting plugin
      */
     async getUserPlaybackActivity(userId: string, days: number = 365): Promise<PlaybackActivity[]> {
+        if (this.useTracearrHistory) {
+            const users = await this.getUsers();
+            const requestedUser = users.find((user) => user.Id === userId);
+            const userName = requestedUser?.Name;
+            if (!userName) return [];
+
+            const tracearrActivity = await getTracearrUserPlaybackActivity({
+                tracearrUrl: this.tracearrUrl,
+                tracearrApiKey: this.tracearrApiKey,
+                userId,
+                username: userName,
+                days
+            });
+            return tracearrActivity;
+        }
+
         const activity = await this.fetch<RawPlaybackActivity[]>('/user_usage_stats/UserPlaylist', {
             user_id: userId,
             days: days.toString()
@@ -217,6 +248,24 @@ class EmbyClient {
      * This endpoint is more reliable than per-event device fields on some plugin versions.
      */
     async getDeviceNameBreakdown(userId: string, days: number): Promise<DeviceBreakdownEntry[]> {
+        if (this.useTracearrHistory) {
+            const activity = await this.getUserPlaybackActivity(userId, days);
+            const byDevice = new Map<string, DeviceBreakdownEntry>();
+
+            for (const row of activity) {
+                const name = row.device_name || row.device || row.client_name || row.client || row.app_name || row.app || 'Unknown Device';
+                const minutes = Math.max(0, Number(row.duration || '0')) / 60;
+                const current = byDevice.get(name) || { name, minutes: 0, count: 0 };
+                current.minutes += minutes;
+                current.count += 1;
+                byDevice.set(name, current);
+            }
+
+            return [...byDevice.values()]
+                .filter((row) => row.minutes > 0)
+                .sort((a, b) => b.minutes - a.minutes);
+        }
+
         const report = await this.fetch<RawBreakdownRecord[]>('/user_usage_stats/DeviceName/BreakdownReport', {
             user_id: userId,
             days: String(days)
@@ -283,6 +332,40 @@ class EmbyClient {
         });
 
         return response.Items;
+    }
+
+    /**
+     * Search multiple items by name in batches
+     */
+    async searchItemsByName(userId: string, names: string[], type: 'Movie' | 'Series'): Promise<EmbyItem[]> {
+        if (names.length === 0) return [];
+
+        interface ItemsResponse {
+            Items: EmbyItem[];
+        }
+
+        const results: EmbyItem[] = [];
+        const BATCH = 5;
+        for (let i = 0; i < names.length; i += BATCH) {
+            const batch = names.slice(i, i + BATCH);
+            const fetched = await Promise.all(batch.map(async (name) => {
+                try {
+                    const response = await this.fetch<ItemsResponse>(`/Users/${userId}/Items`, {
+                        searchTerm: name,
+                        IncludeItemTypes: type,
+                        Recursive: 'true',
+                        Limit: '1',
+                        Fields: 'Genres,SeriesId,Studios,People,ProductionYear,PremiereDate,CommunityRating,OfficialRating,ImageTags,BackdropImageTags,SeriesPrimaryImageTag'
+                    });
+                    return response.Items ?? [];
+                } catch {
+                    return [];
+                }
+            }));
+            fetched.forEach(items => results.push(...items));
+        }
+
+        return results;
     }
 
     /**

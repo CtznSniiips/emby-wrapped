@@ -530,8 +530,56 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         console.warn('Failed to fetch item details:', e);
     }
 
+    // For Tracearr records, item_id is a pseudo hash so itemDetails won't have them.
+    // Resolve genres by searching Emby by title for unique movies and series names.
+    if (videoActivity.some(a => a._fromTracearr)) {
+        const missingMovieTitles = new Set<string>();
+        const missingSeriesNames = new Set<string>();
+
+        for (const activity of videoActivity) {
+            if (!activity._fromTracearr) continue;
+            if (itemDetails.has(String(activity.item_id))) continue;
+
+            const itemType = activity.item_type.toLowerCase();
+            if (itemType === 'movie') {
+                missingMovieTitles.add(activity.item_name);
+            } else if (itemType === 'episode') {
+                const seriesName = activity.item_name.split(' - ')[0]?.trim();
+                if (seriesName) missingSeriesNames.add(seriesName);
+            }
+        }
+
+        try {
+            const [movieResults, seriesResults] = await Promise.all([
+                emby.searchItemsByName(filterUserId, [...missingMovieTitles], 'Movie'),
+                emby.searchItemsByName(filterUserId, [...missingSeriesNames], 'Series')
+            ]);
+
+            const movieByName = new Map(movieResults.map(i => [i.Name.toLowerCase(), i]));
+            const seriesByName = new Map(seriesResults.map(i => [i.Name.toLowerCase(), i]));
+
+            for (const activity of videoActivity) {
+                if (!activity._fromTracearr) continue;
+                if (itemDetails.has(String(activity.item_id))) continue;
+
+                const itemType = activity.item_type.toLowerCase();
+                if (itemType === 'movie') {
+                    const found = movieByName.get(activity.item_name.toLowerCase());
+                    if (found) itemDetails.set(String(activity.item_id), found);
+                } else if (itemType === 'episode') {
+                    const seriesName = activity.item_name.split(' - ')[0]?.trim().toLowerCase();
+                    if (!seriesName) continue;
+                    const found = seriesByName.get(seriesName);
+                    if (found) itemDetails.set(String(activity.item_id), found);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to resolve Tracearr item genres by name:', e);
+        }
+    }
+
     // Filter video activity to only include items the filter user has permission to access
-    const accessibleVideoActivity = videoActivity.filter(a => itemDetails.has(String(a.item_id)));
+    const accessibleVideoActivity = videoActivity.filter(a => a._fromTracearr || itemDetails.has(String(a.item_id)));
     const streakTimeZone = getAppTimeZone();
 
     // Build de-duplicated active dates from timestamped playback events.
@@ -549,11 +597,14 @@ export async function aggregateUserStats(userId: string, username: string, timeR
     const episodes = accessibleVideoActivity.filter(a => a.item_type.toLowerCase() === 'episode');
 
     // Get unique items
-    const uniqueMovieIds = new Set(movies.map(m => String(m.item_id)));
+    // For Tracearr records, item_id is a per-session pseudo hash — deduplicate by title instead.
+    const uniqueMovieIds = new Set(movies.map(m =>
+        m._fromTracearr ? m.item_name.toLowerCase() : String(m.item_id)
+    ));
     const uniqueShowIds = new Set<string>();
 
     // Aggregate by item for top lists
-    const movieStats = new Map<string, { minutes: number; count: number; name: string }>();
+    const movieStats = new Map<string, { minutes: number; count: number; name: string; embyId?: string }>();
     const showStats = new Map<string, { minutes: number; count: number; name: string; episodes: Set<string>; seriesId?: string }>();
     const genreMinutes = new Map<string, number>();
 
@@ -566,10 +617,19 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         const itemType = activity.item_type.toLowerCase();
 
         if (itemType === 'movie') {
-            const existing = movieStats.get(itemId) || { minutes: 0, count: 0, name: activity.item_name };
+            // For Tracearr records, itemId is a pseudo hash (unstable across plays).
+            // Use item_name as a stable aggregation key, mirroring the episode fix above.
+            const movieKey = activity._fromTracearr
+                ? activity.item_name.toLowerCase().trim()
+                : itemId;
+            const existing = movieStats.get(movieKey) || { minutes: 0, count: 0, name: activity.item_name };
             existing.minutes += minutes;
             existing.count += 1;
-            movieStats.set(itemId, existing);
+            // Capture the real Emby ID (from name-search lookup) for image URLs
+            if (!existing.embyId && item?.Id) {
+                existing.embyId = item.Id;
+            }
+            movieStats.set(movieKey, existing);
 
             // Genres
             if (item?.Genres) {
@@ -592,7 +652,12 @@ export async function aggregateUserStats(userId: string, username: string, timeR
             };
             existing.minutes += minutes;
             existing.count += 1;
-            existing.episodes.add(itemId);
+            // For Tracearr records, itemId is a pseudo hash (unstable across plays).
+            // Use item_name as a stable deduplication key instead.
+            const episodeKey = activity._fromTracearr
+                ? activity.item_name.toLowerCase().trim()
+                : itemId;
+            existing.episodes.add(episodeKey);
             // Update seriesId if we find it
             if (item?.SeriesId && !existing.seriesId) {
                 existing.seriesId = item.SeriesId;
@@ -612,13 +677,18 @@ export async function aggregateUserStats(userId: string, username: string, timeR
     const topMovies: TopItem[] = [...movieStats.entries()]
         .sort((a, b) => b[1].minutes - a[1].minutes)
         .slice(0, 10)
-        .map(([id, stats]) => ({
-            id,
-            name: stats.name,
-            imageUrl: emby.getImageUrl(id, 'Primary', 400),
-            minutes: Math.round(stats.minutes),
-            count: stats.count
-        }));
+        .map(([id, stats]) => {
+            // For Tracearr entries the map key is a lowercase title, not a real Emby ID.
+            // Use the stored real Emby ID (resolved via name-search) for the image URL.
+            const imageId = stats.embyId || id;
+            return {
+                id: imageId,
+                name: stats.name,
+                imageUrl: emby.getImageUrl(imageId, 'Primary', 400),
+                minutes: Math.round(stats.minutes),
+                count: stats.count
+            };
+        });
 
     // Build top shows list - use SeriesId for image
     const topShows: TopItem[] = [...showStats.entries()]

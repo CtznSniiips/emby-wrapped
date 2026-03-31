@@ -19,6 +19,7 @@ This version (`emby-wrapped`) adds several features and improvements over the or
 - **URL parameters** - Provide URLs with a pre-selected time-frame
 - **Emby authentication** - Added security via Emby authentication. Users must log in to see stats
 - **Seerr integration** - Optional Seerr integration showing number of requests and broken down by movie, series, and user
+- **Tracearr integration** - The Emby Playback Reporting Plugin is no longer required - you can use history data from Tracearr instead 
 
 ## Screenshots
 
@@ -46,13 +47,18 @@ This version (`emby-wrapped`) adds several features and improvements over the or
 ### Emby Server Setup
 
 1. **Emby Server** - Version 4.7+ recommended
-2. **Playback Reporting Plugin** (Required)
+2. **Playback Reporting Plugin** (Required unless using Tracearr)
    - Go to Emby Dashboard → Plugins → Catalog
    - Search for "Playback Reporting"
    - Install and restart Emby server
    - This plugin tracks detailed playback history needed for stats
-
-3. **API Key**
+3. [**Tracearr**](https://github.com/connorgallopo/tracearr) (optional)
+   - If you use Tracearr integration (`TRACEARR_URL` + `TRACEARR_API_KEY`), Emby Wrapped can read playback history from Tracearr instead
+   - If Tracearr usernames differ from current Emby usernames, use `TRACEARR_USERNAME_ALIASES` to map old names to current names
+   - If both the Playback Reporting Plugin and Tracearr are configured, Tracearr data will be used
+4. [**Seerr**](https://github.com/seerr-team/seerr) (optional)
+   - Enable to view request stats
+5. **API Key**
    - Go to Emby Dashboard → API Keys
    - Create a new API key for "Emby Wrapped"
    - Copy the key for configuration
@@ -76,16 +82,20 @@ services:
     image: ghcr.io/ctznsniiips/emby-wrapped:latest
     container_name: emby-wrapped
     ports:
-      - "3000:3000"
+      - "3003:3003"
     environment:
       - EMBY_URL=http://your-emby-server:8096
       - EMBY_API_KEY=your-api-key-here
       - TMDB_API_KEY=    # Optional: for enhanced poster images
       - SEERR_URL=       # Optional: Overseerr/Jellyseerr URL for request stats
       - SEERR_API_KEY=   # Optional: Overseerr/Jellyseerr API key
+      - TRACEARR_URL=    # Optional: Tracearr URL (uses Tracearr history instead of Playback Reporting)
+      - TRACEARR_API_KEY=# Optional: Tracearr public API key (format: trr_pub_*)
+      - TRACEARR_USERNAME_ALIASES= # Optional: oldname1:newname1,oldname2:newname2
       - PUBLIC_URL=      # Optional: for share links
       - CACHE_TTL=86400  # Optional
       - FILTER_USER_ID=  # Optional: filter by user's library
+      - PORT=3003       # Optional: app listen port inside container
     volumes:
       - ./music:/app/static/music:ro  # Optional: custom background music
     restart: unless-stopped
@@ -96,7 +106,7 @@ services:
 docker compose up -d
 ```
 
-4. Access at `http://localhost:3000`
+4. Access at `http://localhost:3003`
 
 ### Updating
 
@@ -159,10 +169,14 @@ npm run preview
 | `TMDB_API_KEY` | TMDB API key for enhanced poster images (get one free at themoviedb.org) | No |
 | `SEERR_URL` | Seerr/Overseerr/Jellyseerr base URL for request stats (e.g., `http://192.168.1.100:5055`) | No |
 | `SEERR_API_KEY` | Seerr/Overseerr/Jellyseerr API key used to fetch requests (used with `SEERR_URL`) | No |
+| `TRACEARR_URL` | Tracearr base URL (e.g., `http://192.168.1.100:3001`). When set with `TRACEARR_API_KEY`, history data is pulled from Tracearr instead of Emby's Playback Reporting plugin. | No |
+| `TRACEARR_API_KEY` | Tracearr Public API key (`trr_pub_*`) used with `TRACEARR_URL`. | No |
+| `TRACEARR_USERNAME_ALIASES` | Optional case-insensitive username mapping for Tracearr-to-Emby matching after renames. Format: `oldname1:newname1,oldname2:newname2`. | No |
 | `PUBLIC_URL` | Public URL for share links (defaults to request origin) | No |
 | `ANALYTICS_SCRIPT` | Analytics script tag (e.g., Umami, Plausible) to inject into page head | No |
 | `FILTER_USER_ID` | Emby User ID to use for library filtering (useful for hiding NSFW content) | No |
 | `CACHE_TTL` | Cache duration in seconds for statistics (default: 86400) | No |
+| `PORT` | Server port used by the app/container (default: `3003`). | No |
 
 ## Background Music
 
@@ -189,7 +203,7 @@ Provide time-specific URLs for your users
 Add `?YYYY` or `?MM-YYYY` to your url to pre-select the time period where `MM` is the 2 digit month and `YYYY` is the 4 digit year
 
 #### Example
-> `http://yourip:3000?2025` - will pre-select the year 2025 review after the user logs in
+> `http://yourip:3003?2025` - will pre-select the year 2025 review after the user logs in
 
 ## Tech Stack
 
@@ -213,7 +227,7 @@ Add `?YYYY` or `?MM-YYYY` to your url to pre-select the time period where `MM` i
 - Check that your `EMBY_API_KEY` has sufficient permissions
 
 ### Stats seem incomplete
-- Make sure the **Playback Reporting** plugin is installed
+- Make sure the **Playback Reporting** plugin is installed (or that Tracearr is running and configured)
 - The plugin needs time to collect data - it only tracks plays after installation
 - Check the date range - Emby Wrapped shows current year stats
 

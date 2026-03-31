@@ -34,18 +34,18 @@ RUN mkdir -p /app/static/music && chown -R sveltekit:nodejs /app/static
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3003
 ENV HOST=0.0.0.0
 
 # Switch to non-root user
 USER sveltekit
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3003
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget -q --tries=1 -O /dev/null http://127.0.0.1:3000/login || exit 1
+    CMD wget -q --tries=1 -O /dev/null http://127.0.0.1:3003/login || exit 1
 
 # Start the application
 CMD ["node", "build"]

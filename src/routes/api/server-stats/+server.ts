@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { parseTimeRange, timeRangeToString, calculateLookbackDays, matchesTimeRange, type TopItem, type MusicStats } from '$lib/server/stats';
 import { getAuthSession } from '$lib/server/auth';
+import { getAllTracearrPlaybackActivity } from '$lib/server/tracearr';
 
 export interface ServerStats {
     totalUsers: number;
@@ -166,30 +167,50 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
         const allItemIds = new Set<string>();
         const userActivities: { user: any, activity: any[] }[] = [];
 
-        // Fetch activities in parallel
-        const BATCH_SIZE = 10;
-        for (let i = 0; i < users.length; i += BATCH_SIZE) {
-            const batch = users.slice(i, i + BATCH_SIZE);
-            const batchResults = await Promise.allSettled(
-                batch.map(async (user) => {
-                    try {
-                        const activity = await emby.getUserPlaybackActivity(user.Id, daysToFetch);
-                        return { user, activity };
-                    } catch {
-                        return null;
-                    }
-                })
-            );
+        if (emby.useTracearrHistory) {
+            const userMap = new Map(users.map((user) => [user.Id, user.Name]));
+            const allTracearrActivity = await getAllTracearrPlaybackActivity({
+                tracearrUrl: emby.tracearrUrl,
+                tracearrApiKey: emby.tracearrApiKey,
+                users: userMap,
+                days: daysToFetch
+            });
 
-            for (const result of batchResults) {
-                if (result.status === 'fulfilled' && result.value) {
-                    userActivities.push(result.value);
-                    result.value.activity.forEach(item => {
-                        // Pre-filter by time range to reduce item fetch count
-                        if (matchesTimeRange(item.date, timeRange)) {
-                            allItemIds.add(String(item.item_id));
+            for (const user of users) {
+                const activity = allTracearrActivity.get(user.Id) ?? [];
+                userActivities.push({ user, activity });
+                activity.forEach((item) => {
+                    if (matchesTimeRange(item.date, timeRange)) {
+                        allItemIds.add(String(item.item_id));
+                    }
+                });
+            }
+        } else {
+            // Fetch activities in parallel for Playback Reporting mode
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < users.length; i += BATCH_SIZE) {
+                const batch = users.slice(i, i + BATCH_SIZE);
+                const batchResults = await Promise.allSettled(
+                    batch.map(async (user) => {
+                        try {
+                            const activity = await emby.getUserPlaybackActivity(user.Id, daysToFetch);
+                            return { user, activity };
+                        } catch {
+                            return null;
                         }
-                    });
+                    })
+                );
+
+                for (const result of batchResults) {
+                    if (result.status === 'fulfilled' && result.value) {
+                        userActivities.push(result.value);
+                        result.value.activity.forEach(item => {
+                            // Pre-filter by time range to reduce item fetch count
+                            if (matchesTimeRange(item.date, timeRange)) {
+                                allItemIds.add(String(item.item_id));
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -211,7 +232,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
         if (itemIdList.length > 0 && fetchUserId) {
             try {
                 // Batch fetch items
-                for (let i = 0; i < Math.min(itemIdList.length, 500); i += 50) { // Limit to top 500 unique items to prevent massive requests
+                for (let i = 0; i < itemIdList.length; i += 50) {
                     const batch = itemIdList.slice(i, i + 50);
                     const items = await emby.getItems(fetchUserId, batch);
                     items.forEach(item => itemDetails.set(item.Id, item));
@@ -242,7 +263,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
 
                 // Check permission / existence
                 // If filterUserId is set, we strictly require the item to be found in itemDetails
-                if (filterUserId && !itemDetails.has(String(item.item_id))) {
+                if (filterUserId && !item._fromTracearr && !itemDetails.has(String(item.item_id))) {
                     continue;
                 }
 

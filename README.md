@@ -23,16 +23,16 @@ This version (`emby-wrapped`) adds several features and improvements over the or
 
 ## Screenshots
 
-<div style="overflow-x: auto; white-space: nowrap;">
-  <img src="src/lib/assets/screenshots/login.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/community-top-shows.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/community-seerr.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/user-stats.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/user-genre.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/user-watch-time.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/user-week-review.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/user-binge.png" style="display: inline-block; margin-right: 8px;" />
-  <img src="src/lib/assets/screenshots/user-live-tv.png" style="display: inline-block;" />
+<div style="overflow-x: auto; white-space: nowrap; max-width: 100%;">
+  <img src="src/lib/assets/screenshots/login.png" height="300" />
+  <img src="src/lib/assets/screenshots/community-top-shows.png" height="300" />
+  <img src="src/lib/assets/screenshots/community-seerr.png" height="300" />
+  <img src="src/lib/assets/screenshots/user-stats.png" height="300" />
+  <img src="src/lib/assets/screenshots/user-genre.png" height="300" />
+  <img src="src/lib/assets/screenshots/user-watch-time.png" height="300" />
+  <img src="src/lib/assets/screenshots/user-week-review.png" height="300" />
+  <img src="src/lib/assets/screenshots/user-binge.png" height="300" />
+  <img src="src/lib/assets/screenshots/user-live-tv.png" height="300" />
 </div>
 
 ## Features

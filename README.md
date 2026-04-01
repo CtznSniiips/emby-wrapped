@@ -248,6 +248,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
+- Thanks to [**davidtorcivia**](https://github.com/davidtorcivia) for the original emby-wrapped-ftp
+- Additional thanks to [**tonghongte**](https://github.com/tonghongte) for their emby-wrapped-ftp fork
 - Inspired by Spotify Wrapped
 - Built for the Emby community
 - Uses the Emby API for data retrieval
+- Additional thanks to [Tracearr](https://github.com/connorgallopo/Tracearr) and [Seerr](https://github.com/seerr-team/seerr) project contributors

@@ -6,7 +6,7 @@ A beautiful, Spotify Wrapped-style year-in-review experience for your Emby media
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 ![SvelteKit](https://img.shields.io/badge/SvelteKit-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
 
-## Fork Improvements
+## Features
 
 This version (`emby-wrapped`) adds several features and improvements over the original:
 
@@ -20,6 +20,16 @@ This version (`emby-wrapped`) adds several features and improvements over the or
 - **Emby authentication** - Added security via Emby authentication. Users must log in to see stats
 - **Seerr integration** - Optional Seerr integration showing number of requests and broken down by movie, series, and user
 - **Tracearr integration** - The Emby Playback Reporting Plugin is no longer required - you can use history data from Tracearr instead 
+- **Total Watch Time** - See how many days/hours you've spent watching
+- **Top Shows and Movies** - Your most-watched content with beautiful poster displays
+- **Genre Breakdown** - Discover your viewing preferences
+- **Viewing Patterns** - Peak hours and favorite days of the week
+- **Viewing Personality** - Fun personality type based on your habits
+- **Binge Sessions** - See your longest viewing marathons
+- **Monthly Journey** - Track your viewing across the year
+- **Device breakdown** - See which devices you watched on
+- **Live TV** - See Live TV time watched and top 5 channels
+- **Share Cards** - Download individual stat cards to share
 
 ## Screenshots
 
@@ -32,39 +42,25 @@ This version (`emby-wrapped`) adds several features and improvements over the or
   <img src="src/lib/assets/screenshots/user-live-tv.png" height="300" />
 </p>
 
-## Features
-
-- **Total Watch Time** - See how many days/hours you've spent watching
-- **Top Shows and Movies** - Your most-watched content with beautiful poster displays
-- **Genre Breakdown** - Discover your viewing preferences
-- **Viewing Patterns** - Peak hours and favorite days of the week
-- **Viewing Personality** - Fun personality type based on your habits
-- **Binge Sessions** - See your longest viewing marathons
-- **Monthly Journey** - Track your viewing across the year
-- **Device breakdown** - See which devices you watched on
-- **Live TV** - See Live TV time watched and top 5 channels
-- **Share Cards** - Download individual stat cards to share
-
 ## Requirements
 
 ### Emby Server Setup
 
-1. **Emby Server** - Version 4.7+ recommended
-2. **Playback Reporting Plugin** (Required unless using Tracearr)
+1. **Emby Server** and API Key- Version 4.7+ recommended
+   - Go to Emby Dashboard → API Keys
+   - Create a new API key for "Emby Wrapped"
+   - Copy the key for configuration
+3. **Playback Reporting Plugin** (Required unless using Tracearr)
    - Go to Emby Dashboard → Plugins → Catalog
    - Search for "Playback Reporting"
    - Install and restart Emby server
    - This plugin tracks detailed playback history needed for stats
-3. [**Tracearr**](https://github.com/connorgallopo/tracearr) (optional)
+4. [**Tracearr**](https://github.com/connorgallopo/tracearr) (optional)
    - If you use Tracearr integration (`TRACEARR_URL` + `TRACEARR_API_KEY`), Emby Wrapped can read playback history from Tracearr instead
    - If Tracearr usernames differ from current Emby usernames, use `TRACEARR_USERNAME_ALIASES` to map old names to current names
    - If both the Playback Reporting Plugin and Tracearr are configured, Tracearr data will be used
-4. [**Seerr**](https://github.com/seerr-team/seerr) (optional)
+5. [**Seerr**](https://github.com/seerr-team/seerr) (optional)
    - Enable to view request stats
-5. **API Key**
-   - Go to Emby Dashboard → API Keys
-   - Create a new API key for "Emby Wrapped"
-   - Copy the key for configuration
 
 ## Quick Start with Docker (Recommended)
 
@@ -240,7 +236,7 @@ Add `?YYYY` or `?MM-YYYY` to your url to pre-select the time period where `MM` i
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Feel free to submit a Pull Request. Please base any PRs on the beta branch.
 
 ## License
 

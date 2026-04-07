@@ -123,6 +123,11 @@
 </div>
 
 <style>
+    :global(body) {
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
     .user-page {
         position: relative;
         min-height: 100vh;
@@ -131,6 +136,12 @@
         align-items: center;
         justify-content: center;
         padding: 2rem;
+    }
+
+    @media (max-height: 760px) {
+        .user-page {
+            align-items: flex-start;
+        }
     }
 
     .bg-pattern {

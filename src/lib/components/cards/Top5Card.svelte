@@ -205,7 +205,8 @@
 	.card-base {
 		position: relative;
 		width: 100%;
-		height: 100%;
+		min-height: 100%;
+		height: auto;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -213,7 +214,7 @@
 		padding: 2rem 1rem;
 		opacity: 0;
 		transition: opacity 0.4s ease;
-		overflow: hidden;
+		overflow: visible;
 	}
 
 	/* More compact on mobile to prevent overflow */

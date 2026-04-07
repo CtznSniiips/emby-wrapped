@@ -175,7 +175,8 @@
 		transition:
 			opacity 0.5s ease,
 			transform 0.5s ease;
-		overflow: visible;
+		overflow: hidden;
+		isolation: isolate;
 	}
 
 	.card-base.visible {

@@ -9,6 +9,7 @@
     import MusicSummaryCard from "$lib/components/cards/MusicSummaryCard.svelte";
 	import SeerrRequestsCard from "$lib/components/cards/SeerrRequestsCard.svelte";
 	import embywrappedLogo from "$lib/assets/embywrapped-logo.png";
+	import { serverStatsStore } from "$lib/stores/serverStatsStore";
 
 	import type { PageData } from './$types';
 
@@ -55,6 +56,9 @@
 	let contentPhase = 0;
 	let ctaPhase = 0;
 
+	// Track pending animation timeouts so they can be cancelled on card change
+	let animationTimeouts: ReturnType<typeof setTimeout>[] = [];
+
 	// Fetch server stats when selectedTimeRange changes
 	$: if (selectedTimeRange && authenticatedUser) {
 		fetchServerStats();
@@ -66,6 +70,7 @@
 			const response = await fetch(`/api/server-stats?period=${selectedTimeRange}`);
 			if (response.ok) {
 				serverStats = await response.json();
+				serverStatsStore.set(serverStats);
 			}
 		} catch (e) {
 			console.warn("Failed to load server stats:", e);
@@ -89,6 +94,9 @@
 	function handleCardChange(event: CustomEvent<{ index: number }>) {
 		const cardIndex = event.detail.index;
 		currentCardIndex = cardIndex;
+		// Cancel any stale animation timeouts from a previous card visit
+		animationTimeouts.forEach(clearTimeout);
+		animationTimeouts = [];
 		// Reset and start animations for the active card
 		resetAllPhases();
 		setTimeout(() => startCardAnimation(cardIndex), 100);
@@ -123,7 +131,7 @@
 		const config = timelines[cardType];
 		if (config) {
 			config.delays.forEach((delay, i) => {
-				setTimeout(() => config.setter(i + 1), delay);
+				animationTimeouts.push(setTimeout(() => config.setter(i + 1), delay));
 			});
 		}
 	}
@@ -174,7 +182,11 @@
 		? formatDuration(serverStats.totalMinutes)
 		: { days: 0, hours: 0, minutes: 0, formatted: "" };
 
-	// Card count
+	// Card count — 'cta' is intentionally inside the serverStats block so that visibleCards
+	// only ever grows once (atomically, when data is ready). Keeping 'cta' outside caused a
+	// race condition: the user could tap to index 1 ('cta') before serverStats loaded, then
+	// when serverStats arrived and new cards were inserted, currentCard=1 would point to
+	// 'time' instead of 'cta', silently replacing the CTA screen and breaking the button.
 	$: visibleCards = (() => {
         const cards = ['intro'];
         if (serverStats) {
@@ -184,8 +196,8 @@
             if (serverStats.topMovies?.length > 0) cards.push('top_movies');
             if (serverStats.seerrRequests?.totalRequests > 0) cards.push('seerr_requests');
             if (serverStats.music && serverStats.music.totalMinutes > 0) cards.push('music');
+            cards.push('cta');
         }
-        cards.push('cta');
         return cards;
     })();
 </script>
@@ -312,8 +324,13 @@
 					</p>
 
 					<p class="tap-hint" class:show={introPhase >= 4}>
-						<span class="hint-icon">{UNICODE.triangleDown}</span>
-						Tap to begin
+						{#if statsLoading}
+							<span class="stats-spinner"></span>
+							Loading server stats…
+						{:else}
+							<span class="hint-icon">{UNICODE.triangleDown}</span>
+							Tap to begin
+						{/if}
 					</p>
 				</div>
 			</div>
@@ -754,11 +771,31 @@
 		font-size: 0.875rem;
 		color: rgba(255, 255, 255, 0.3);
 		margin-top: 2rem;
+		min-height: 1.5rem;
+	}
+
+	.tap-hint:has(.stats-spinner) {
+		flex-direction: row;
+		gap: 0.5rem;
 	}
 
 	.hint-icon {
 		font-family: "JetBrains Mono", monospace;
 		animation: bounce 2s ease-in-out infinite;
+	}
+
+	.stats-spinner {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 1.5px solid rgba(255, 255, 255, 0.15);
+		border-top-color: rgba(255, 255, 255, 0.6);
+		animation: spin 0.8s linear infinite;
+		flex-shrink: 0;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 
 	@keyframes bounce {

@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.0] - 2026-05-04
+
+### Fixed
+- **"See Your Wrapped" button unresponsive**
+- **Animation phase leak on rapid card navigation**
+
+### Added
+- **Navigation loading overlay**: Clicking "See Your Wrapped" triggers a full server-side data
+  fetch that can take several seconds on a cold cache. The UI previously showed no feedback
+  during this wait, making the button appear broken. Added a full-screen overlay that appears
+  during any SvelteKit navigation, featuring a shimmer progress bar, spinner, and rotating
+  fact carousel (see below).
+- **Rotating fact carousel on loading screen**: While the personal wrapped page loads, the
+  overlay cycles through a shuffled mix of generic watch-habit trivia and real server stats
+  drawn from the community wrapped session (total hours, user count, top show/movie, episode-
+  to-movie ratio, etc.). Facts cross-fade every 3 seconds. Falls back gracefully to generic
+  messages if community stats are not yet available.
+- **Loading hint on intro card**: While server stats are still fetching, the intro card's
+  "Tap to begin" hint now reads "Loading your stats…" so users understand why they cannot
+  advance past the first card yet.
+
 ## [2.4.0] - 2026-04-07
 
 ### Fixed

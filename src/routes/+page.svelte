@@ -55,6 +55,9 @@
 	let contentPhase = 0;
 	let ctaPhase = 0;
 
+	// Track pending animation timeouts so they can be cancelled on card change
+	let animationTimeouts: ReturnType<typeof setTimeout>[] = [];
+
 	// Fetch server stats when selectedTimeRange changes
 	$: if (selectedTimeRange && authenticatedUser) {
 		fetchServerStats();
@@ -89,6 +92,9 @@
 	function handleCardChange(event: CustomEvent<{ index: number }>) {
 		const cardIndex = event.detail.index;
 		currentCardIndex = cardIndex;
+		// Cancel any stale animation timeouts from a previous card visit
+		animationTimeouts.forEach(clearTimeout);
+		animationTimeouts = [];
 		// Reset and start animations for the active card
 		resetAllPhases();
 		setTimeout(() => startCardAnimation(cardIndex), 100);
@@ -123,7 +129,7 @@
 		const config = timelines[cardType];
 		if (config) {
 			config.delays.forEach((delay, i) => {
-				setTimeout(() => config.setter(i + 1), delay);
+				animationTimeouts.push(setTimeout(() => config.setter(i + 1), delay));
 			});
 		}
 	}
@@ -174,7 +180,11 @@
 		? formatDuration(serverStats.totalMinutes)
 		: { days: 0, hours: 0, minutes: 0, formatted: "" };
 
-	// Card count
+	// Card count — 'cta' is intentionally inside the serverStats block so that visibleCards
+	// only ever grows once (atomically, when data is ready). Keeping 'cta' outside caused a
+	// race condition: the user could tap to index 1 ('cta') before serverStats loaded, then
+	// when serverStats arrived and new cards were inserted, currentCard=1 would point to
+	// 'time' instead of 'cta', silently replacing the CTA screen and breaking the button.
 	$: visibleCards = (() => {
         const cards = ['intro'];
         if (serverStats) {
@@ -184,8 +194,8 @@
             if (serverStats.topMovies?.length > 0) cards.push('top_movies');
             if (serverStats.seerrRequests?.totalRequests > 0) cards.push('seerr_requests');
             if (serverStats.music && serverStats.music.totalMinutes > 0) cards.push('music');
+            cards.push('cta');
         }
-        cards.push('cta');
         return cards;
     })();
 </script>
@@ -313,7 +323,11 @@
 
 					<p class="tap-hint" class:show={introPhase >= 4}>
 						<span class="hint-icon">{UNICODE.triangleDown}</span>
-						Tap to begin
+						{#if statsLoading}
+							Loading your stats…
+						{:else}
+							Tap to begin
+						{/if}
 					</p>
 				</div>
 			</div>

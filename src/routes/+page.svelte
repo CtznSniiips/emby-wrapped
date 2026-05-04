@@ -9,6 +9,7 @@
     import MusicSummaryCard from "$lib/components/cards/MusicSummaryCard.svelte";
 	import SeerrRequestsCard from "$lib/components/cards/SeerrRequestsCard.svelte";
 	import embywrappedLogo from "$lib/assets/embywrapped-logo.png";
+	import { serverStatsStore } from "$lib/stores/serverStatsStore";
 
 	import type { PageData } from './$types';
 
@@ -69,6 +70,7 @@
 			const response = await fetch(`/api/server-stats?period=${selectedTimeRange}`);
 			if (response.ok) {
 				serverStats = await response.json();
+				serverStatsStore.set(serverStats);
 			}
 		} catch (e) {
 			console.warn("Failed to load server stats:", e);

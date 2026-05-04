@@ -324,10 +324,11 @@
 					</p>
 
 					<p class="tap-hint" class:show={introPhase >= 4}>
-						<span class="hint-icon">{UNICODE.triangleDown}</span>
 						{#if statsLoading}
-							Loading your stats…
+							<span class="stats-spinner"></span>
+							Loading server stats…
 						{:else}
+							<span class="hint-icon">{UNICODE.triangleDown}</span>
 							Tap to begin
 						{/if}
 					</p>
@@ -770,11 +771,31 @@
 		font-size: 0.875rem;
 		color: rgba(255, 255, 255, 0.3);
 		margin-top: 2rem;
+		min-height: 1.5rem;
+	}
+
+	.tap-hint:has(.stats-spinner) {
+		flex-direction: row;
+		gap: 0.5rem;
 	}
 
 	.hint-icon {
 		font-family: "JetBrains Mono", monospace;
 		animation: bounce 2s ease-in-out infinite;
+	}
+
+	.stats-spinner {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 1.5px solid rgba(255, 255, 255, 0.15);
+		border-top-color: rgba(255, 255, 255, 0.6);
+		animation: spin 0.8s linear infinite;
+		flex-shrink: 0;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 
 	@keyframes bounce {

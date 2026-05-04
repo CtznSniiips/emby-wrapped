@@ -89,7 +89,7 @@ services:
       - SEERR_URL=       # Optional: Overseerr/Jellyseerr URL for request stats
       - SEERR_API_KEY=   # Optional: Overseerr/Jellyseerr API key
       - TRACEARR_URL=    # Optional: Tracearr URL (uses Tracearr history instead of Playback Reporting)
-      - TRACEARR_API_KEY=# Optional: Tracearr public API key (format: trr_pub_*)
+      - TRACEARR_API_KEY= # Optional: Tracearr public API key (format: trr_pub_*)
       - TRACEARR_USERNAME_ALIASES= # Optional: oldname1:newname1,oldname2:newname2
       - PUBLIC_URL=      # Optional: for share links
       - CACHE_TTL=86400  # Optional

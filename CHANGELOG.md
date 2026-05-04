@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.0] - 2026-04-07
+
+### Fixed
+- **Improvements for small screens**: Headers on certain cards could be cut off on screens with a small resolution size, fixed the start position of headers below the progress dots and added ability to scroll
+
 ## [2.3.0] - 2026-03-31
 - **Optional Tracearr integration**: Optionally use Tracearr history instead of Playback Reporting
 

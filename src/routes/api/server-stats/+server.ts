@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { emby, type EmbyItem } from '$lib/server/emby';
+import { emby, type EmbyItem, type EmbyUser } from '$lib/server/emby';
 import { tmdb } from '$lib/server/tmdb';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
-import { parseTimeRange, timeRangeToString, calculateLookbackDays, matchesTimeRange, type TopItem, type MusicStats } from '$lib/server/stats';
+import { parseTimeRange, timeRangeToString, calculateLookbackDays, matchesTimeRange, type TopItem, type MusicStats, type TimeRange } from '$lib/server/stats';
 import { getAuthSession } from '$lib/server/auth';
 import { getAllTracearrPlaybackActivity } from '$lib/server/tracearr';
 
@@ -55,7 +55,7 @@ interface SeerrRequestsResponse {
     };
 }
 
-async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRange>): Promise<ServerStats['seerrRequests']> {
+async function fetchSeerrRequestStats(timeRange: TimeRange): Promise<ServerStats['seerrRequests']> {
     const seerrUrl = env.SEERR_URL?.trim();
     const seerrApiKey = env.SEERR_API_KEY?.trim();
     if (!seerrUrl || !seerrApiKey) return null;
@@ -63,10 +63,8 @@ async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRang
     try {
         const normalizedUrl = seerrUrl.replace(/\/$/, '');
         const allRequests: SeerrRequest[] = [];
-        let page = 1;
-        let totalPages = 1;
 
-        while (page <= totalPages) {
+        const fetchSeerrPage = async (page: number): Promise<SeerrRequestsResponse> => {
             const skip = (page - 1) * 100;
             const response = await fetch(`${normalizedUrl}/api/v1/request?skip=${skip}&take=100`, {
                 headers: {
@@ -74,17 +72,26 @@ async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRang
                     'Content-Type': 'application/json'
                 }
             });
-
             if (!response.ok) {
-                console.warn(`Failed to fetch Seerr requests: ${response.status}`);
-                return null;
+                throw new Error(`Failed to fetch Seerr requests: ${response.status}`);
             }
+            return response.json();
+        };
 
-            const data: SeerrRequestsResponse = await response.json();
-            const pageResults = data.results || [];
-            allRequests.push(...pageResults);
-            totalPages = Math.max(data.pageInfo?.pages || 1, 1);
-            page++;
+        // Fetch page 1 first to learn the real total page count, then fetch
+        // the rest concurrently instead of one page at a time.
+        const firstPage = await fetchSeerrPage(1);
+        allRequests.push(...(firstPage.results || []));
+        const totalPages = Math.max(firstPage.pageInfo?.pages || 1, 1);
+
+        if (totalPages > 1) {
+            const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+            const PARALLEL_BATCH = 8;
+            for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH) {
+                const batch = remainingPages.slice(i, i + PARALLEL_BATCH);
+                const results = await Promise.all(batch.map(fetchSeerrPage));
+                for (const data of results) allRequests.push(...(data.results || []));
+            }
         }
 
         const requestsInTimeRange = allRequests.filter((request) =>
@@ -134,23 +141,256 @@ async function fetchSeerrRequestStats(timeRange: ReturnType<typeof parseTimeRang
     }
 }
 
-// Cache for server stats (expires after 5 minutes)
+// ---------------------------------------------------------------------
+// Per-month raw activity cache
+//
+// A completed month's playback activity can never change once it's over,
+// so we cache the (already permission-filtered) raw items for each
+// completed month indefinitely. When a "year" request comes in, only the
+// current, still-in-progress month needs a fresh fetch — every earlier
+// month is served straight from this cache, so we skip re-hitting
+// Tracearr/Emby (and re-running permission filtering) for months that
+// can't have changed.
+// ---------------------------------------------------------------------
+
+interface MonthPlaybackItem {
+    date: string;
+    duration: string;
+    item_type: string;
+    item_name: string;
+    item_id: string | number;
+}
+
+const monthActivityCache = new Map<string, MonthPlaybackItem[]>();
+
+function monthCacheKey(year: number, month: number): string {
+    return `${year}-${month}`;
+}
+
+function isCompletedMonth(year: number, month: number): boolean {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    return year < currentYear || (year === currentYear && month < currentMonth);
+}
+
+/**
+ * Fetch raw playback activity for the last `days` days (from every user),
+ * applying the same permission filtering the old single-pass version did.
+ * Returns a flat, un-partitioned list — callers slice it into months.
+ */
+async function fetchRawActivityWindow(
+    users: EmbyUser[],
+    filterUserId: string | undefined,
+    fetchUserId: string | undefined,
+    days: number
+): Promise<MonthPlaybackItem[]> {
+    const rawActivities: { activity: any[] }[] = [];
+    const allItemIds = new Set<string>();
+
+    if (emby.useTracearrHistory) {
+        const userMap = new Map(users.map((user) => [user.Id, user.Name]));
+        const allTracearrActivity = await getAllTracearrPlaybackActivity({
+            tracearrUrl: emby.tracearrUrl,
+            tracearrApiKey: emby.tracearrApiKey,
+            users: userMap,
+            days
+        });
+
+        for (const user of users) {
+            const activity = allTracearrActivity.get(user.Id) ?? [];
+            rawActivities.push({ activity });
+            activity.forEach((item) => allItemIds.add(String(item.item_id)));
+        }
+    } else {
+        // Fetch activities in parallel for Playback Reporting mode
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < users.length; i += BATCH_SIZE) {
+            const batch = users.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.allSettled(
+                batch.map(async (user) => {
+                    const activity = await emby.getUserPlaybackActivity(user.Id, days);
+                    return { activity };
+                })
+            );
+
+            for (const result of batchResults) {
+                if (result.status === 'fulfilled') {
+                    rawActivities.push(result.value);
+                    result.value.activity.forEach((item) => allItemIds.add(String(item.item_id)));
+                }
+            }
+        }
+    }
+
+    // Fetch item details using filter user (if set) for permission
+    // filtering, in parallel batches of 50 IDs.
+    const itemDetails = new Map<string, EmbyItem>();
+    const itemIdList = [...allItemIds];
+
+    if (itemIdList.length > 0 && fetchUserId) {
+        try {
+            const batches: string[][] = [];
+            for (let i = 0; i < itemIdList.length; i += 50) {
+                batches.push(itemIdList.slice(i, i + 50));
+            }
+            const batchResults = await Promise.allSettled(
+                batches.map((batch) => emby.getItems(fetchUserId, batch))
+            );
+            for (const result of batchResults) {
+                if (result.status === 'fulfilled') {
+                    result.value.forEach((item) => itemDetails.set(item.Id, item));
+                } else {
+                    console.warn('Failed to fetch an item detail batch for server stats:', result.reason);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to fetch item details for server stats:', e);
+        }
+    }
+
+    const items: MonthPlaybackItem[] = [];
+    for (const { activity } of rawActivities) {
+        for (const item of activity) {
+            // Check permission / existence.
+            // If filterUserId is set, we strictly require the item to be found in itemDetails
+            if (filterUserId && !item._fromTracearr && !itemDetails.has(String(item.item_id))) {
+                continue;
+            }
+            items.push({
+                date: item.date,
+                duration: item.duration,
+                item_type: item.item_type,
+                item_name: item.item_name,
+                item_id: item.item_id
+            });
+        }
+    }
+
+    return items;
+}
+
+/** Split a flat list of raw activity items into per-month buckets. */
+function partitionByMonth(
+    items: MonthPlaybackItem[],
+    months: { year: number; month: number }[]
+): Map<string, MonthPlaybackItem[]> {
+    const buckets = new Map<string, MonthPlaybackItem[]>();
+    for (const { year, month } of months) buckets.set(monthCacheKey(year, month), []);
+
+    for (const item of items) {
+        for (const { year, month } of months) {
+            if (matchesTimeRange(item.date, { type: 'month', year, month })) {
+                buckets.get(monthCacheKey(year, month))!.push(item);
+                break; // an item belongs to exactly one month
+            }
+        }
+    }
+
+    return buckets;
+}
+
+/**
+ * Gather all raw activity items needed to cover `neededMonths`, using the
+ * month cache wherever possible and only hitting Tracearr/Emby for months
+ * that are missing (in practice: just the current month, once the cache
+ * is warm).
+ */
+async function gatherActivityForMonths(
+    users: EmbyUser[],
+    filterUserId: string | undefined,
+    fetchUserId: string | undefined,
+    neededMonths: { year: number; month: number }[]
+): Promise<MonthPlaybackItem[]> {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const cachedBuckets = new Map<string, MonthPlaybackItem[]>();
+    const missingMonths: { year: number; month: number }[] = [];
+
+    for (const m of neededMonths) {
+        const key = monthCacheKey(m.year, m.month);
+        if (isCompletedMonth(m.year, m.month) && monthActivityCache.has(key)) {
+            cachedBuckets.set(key, monthActivityCache.get(key)!);
+        } else {
+            missingMonths.push(m);
+        }
+    }
+
+    let fetchedBuckets = new Map<string, MonthPlaybackItem[]>();
+
+    if (missingMonths.length > 0) {
+        const onlyCurrentMonthMissing =
+            missingMonths.length === 1 &&
+            missingMonths[0].year === currentYear &&
+            missingMonths[0].month === currentMonth;
+
+        // If the only gap is the current, in-progress month we only need a
+        // small window since it began. Otherwise (cold cache, or several
+        // months missing) fetch one window that covers every missing
+        // month in a single request.
+        const oldestMissing = missingMonths.reduce((a, b) =>
+            a.year < b.year || (a.year === b.year && a.month < b.month) ? a : b
+        );
+        const days = onlyCurrentMonthMissing
+            ? calculateLookbackDays({ type: 'month', year: currentYear, month: currentMonth })
+            : calculateLookbackDays({ type: 'month', year: oldestMissing.year, month: oldestMissing.month });
+
+        const rawItems = await fetchRawActivityWindow(users, filterUserId, fetchUserId, days);
+        fetchedBuckets = partitionByMonth(rawItems, missingMonths);
+
+        // Cache the buckets that represent completed months so future
+        // requests don't need to re-fetch or re-filter them.
+        for (const m of missingMonths) {
+            if (isCompletedMonth(m.year, m.month)) {
+                monthActivityCache.set(monthCacheKey(m.year, m.month), fetchedBuckets.get(monthCacheKey(m.year, m.month)) ?? []);
+            }
+        }
+    }
+
+    const allItems: MonthPlaybackItem[] = [];
+    for (const m of neededMonths) {
+        const key = monthCacheKey(m.year, m.month);
+        const bucket = cachedBuckets.get(key) ?? fetchedBuckets.get(key) ?? [];
+        allItems.push(...bucket);
+    }
+
+    return allItems;
+}
+
+// Cache for the final, assembled server stats response. Completed periods
+// (past years/months) can't change, so they're cached indefinitely once
+// computed. Only the current, in-progress period gets a short TTL since
+// new plays keep coming in for it — and even then, gatherActivityForMonths
+// above means recomputing it is cheap since only the current month needs
+// a fresh fetch.
 const cachedStatsMap = new Map<string, { stats: ServerStats; time: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CURRENT_PERIOD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
     const session = getAuthSession(cookies);
     if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
-    
+
     try {
         const periodParam = url.searchParams.get('period') || String(new Date().getFullYear() - 1);
         const timeRange = parseTimeRange(periodParam);
         const timeRangeStr = timeRangeToString(timeRange);
         const cacheKey = timeRangeStr;
 
-        // Return cached data if still valid
+        // A period is still "in progress" (and needs periodic re-fetching)
+        // if it's the current year, or the current month within the current
+        // year. Anything earlier is a completed period whose stats can
+        // never change once computed, so it's safe to cache indefinitely.
+        const now = new Date();
+        const isCurrentPeriod =
+            timeRange.year === now.getFullYear() &&
+            (timeRange.type === 'year' || timeRange.month === now.getMonth() + 1);
+
+        // Return cached data if still valid. Completed periods never expire;
+        // the current period expires after CURRENT_PERIOD_CACHE_TTL.
         const cached = cachedStatsMap.get(cacheKey);
-        if (cached && Date.now() - cached.time < CACHE_TTL) {
+        if (cached && (!isCurrentPeriod || Date.now() - cached.time < CURRENT_PERIOD_CACHE_TTL)) {
             console.log(`Returning cached server stats for ${cacheKey}`);
             return json(cached.stats);
         }
@@ -159,88 +399,24 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
         const startTime = Date.now();
 
         const users = await emby.getUsers();
-        const daysToFetch = calculateLookbackDays(timeRange);
-        
         const filterUserId = env.FILTER_USER_ID;
+        const fetchUserId = filterUserId || (users.find((u) => u.Policy?.IsAdministrator)?.Id || users[0]?.Id);
 
-        // Collect all unique item IDs from all users
-        const allItemIds = new Set<string>();
-        const userActivities: { user: any, activity: any[] }[] = [];
+        // Figure out which (year, month) buckets this request needs, then
+        // let gatherActivityForMonths serve completed ones from cache and
+        // only fetch what's actually missing.
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
 
-        if (emby.useTracearrHistory) {
-            const userMap = new Map(users.map((user) => [user.Id, user.Name]));
-            const allTracearrActivity = await getAllTracearrPlaybackActivity({
-                tracearrUrl: emby.tracearrUrl,
-                tracearrApiKey: emby.tracearrApiKey,
-                users: userMap,
-                days: daysToFetch
-            });
+        const neededMonths: { year: number; month: number }[] =
+            timeRange.type === 'month' && timeRange.month
+                ? [{ year: timeRange.year, month: timeRange.month }]
+                : Array.from(
+                      { length: timeRange.year === currentYear ? currentMonth : 12 },
+                      (_, i) => ({ year: timeRange.year, month: i + 1 })
+                  );
 
-            for (const user of users) {
-                const activity = allTracearrActivity.get(user.Id) ?? [];
-                userActivities.push({ user, activity });
-                activity.forEach((item) => {
-                    if (matchesTimeRange(item.date, timeRange)) {
-                        allItemIds.add(String(item.item_id));
-                    }
-                });
-            }
-        } else {
-            // Fetch activities in parallel for Playback Reporting mode
-            const BATCH_SIZE = 10;
-            for (let i = 0; i < users.length; i += BATCH_SIZE) {
-                const batch = users.slice(i, i + BATCH_SIZE);
-                const batchResults = await Promise.allSettled(
-                    batch.map(async (user) => {
-                        try {
-                            const activity = await emby.getUserPlaybackActivity(user.Id, daysToFetch);
-                            return { user, activity };
-                        } catch {
-                            return null;
-                        }
-                    })
-                );
-
-                for (const result of batchResults) {
-                    if (result.status === 'fulfilled' && result.value) {
-                        userActivities.push(result.value);
-                        result.value.activity.forEach(item => {
-                            // Pre-filter by time range to reduce item fetch count
-                            if (matchesTimeRange(item.date, timeRange)) {
-                                allItemIds.add(String(item.item_id));
-                            }
-                        });
-                    }
-                }
-            }
-        }
-
-        // Fetch item details using filter user (if set) or skip filtering
-        // If FILTER_USER_ID is set, only items accessible to that user will be returned
-        const itemDetails = new Map<string, EmbyItem>();
-        const itemIdList = [...allItemIds];
-        
-        // Use filter user ID if provided, otherwise use the first admin user found (or just skip filtering logic if none)
-        // Ideally we should use a specific user for filtering. If env.FILTER_USER_ID is not set, 
-        // we might want to default to including everything (no filter) or pick an admin.
-        // For server stats, usually we want to filter by a specific restricted user to avoid NSFW content.
-        // If no filter user is provided, we fetch items using the first user (might be incomplete if that user has restrictions)
-        // or better, fetch as admin. But here we stick to the requirement: apply FILTER_USER_ID.
-        
-        const fetchUserId = filterUserId || (users.find(u => u.Policy?.IsAdministrator)?.Id || users[0]?.Id);
-
-        if (itemIdList.length > 0 && fetchUserId) {
-            try {
-                // Batch fetch items
-                for (let i = 0; i < itemIdList.length; i += 50) {
-                    const batch = itemIdList.slice(i, i + 50);
-                    const items = await emby.getItems(fetchUserId, batch);
-                    items.forEach(item => itemDetails.set(item.Id, item));
-                }
-            } catch (e) {
-                console.warn('Failed to fetch item details for server stats:', e);
-            }
-        }
+        const allItems = await gatherActivityForMonths(users, filterUserId, fetchUserId, neededMonths);
 
         // Aggregate stats
         let totalMinutes = 0;
@@ -249,80 +425,74 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
         const monthlyMinutes = new Array(12).fill(0);
         const showMap = new Map<string, { name: string; minutes: number; count: number }>();
         const movieMap = new Map<string, { name: string; minutes: number; count: number }>();
-        
+
         // Music aggregation
         let musicTotalMinutes = 0;
         let musicTrackCount = 0;
         const artistMap = new Map<string, { minutes: number; count: number; trackId?: string }>();
         const trackMap = new Map<string, { name: string; artist: string; minutes: number; count: number; trackId: string }>();
 
-        for (const { activity } of userActivities) {
-            for (const item of activity) {
-                // Filter by time range
-                if (!matchesTimeRange(item.date, timeRange)) continue;
+        for (const item of allItems) {
+            // Belt-and-suspenders: the per-month gathering above already
+            // scopes items to the requested months, but re-check against
+            // the full requested range in case of any edge cases.
+            if (!matchesTimeRange(item.date, timeRange)) continue;
 
-                // Check permission / existence
-                // If filterUserId is set, we strictly require the item to be found in itemDetails
-                if (filterUserId && !item._fromTracearr && !itemDetails.has(String(item.item_id))) {
-                    continue;
-                }
+            const durationSeconds = parseInt(item.duration, 10) || 0;
+            const minutes = Math.round(durationSeconds / 60);
 
-                const durationSeconds = parseInt(item.duration, 10) || 0;
-                const minutes = Math.round(durationSeconds / 60);
+            // Music
+            const itemType = item.item_type?.toLowerCase();
+            const trackId = String(item.item_id);
+            if (itemType === 'audio' || itemType === 'musicalbum') {
+                musicTotalMinutes += minutes;
+                musicTrackCount++;
 
-                // Music
-                const itemType = item.item_type?.toLowerCase();
-                const trackId = String(item.item_id);
-                if (itemType === 'audio' || itemType === 'musicalbum') {
-                    musicTotalMinutes += minutes;
-                    musicTrackCount++;
+                // Extract artist
+                const parts = item.item_name.split(' - ');
+                const artist = parts.length > 1 ? parts[0].trim() : 'Unknown Artist';
+                const trackName = parts.length > 1 ? parts.slice(1).join(' - ') : item.item_name;
 
-                    // Extract artist
-                    const parts = item.item_name.split(' - ');
-                    const artist = parts.length > 1 ? parts[0].trim() : 'Unknown Artist';
-                    const trackName = parts.length > 1 ? parts.slice(1).join(' - ') : item.item_name;
+                // Artist stats
+                const existingArtist = artistMap.get(artist) || { minutes: 0, count: 0, trackId };
+                existingArtist.minutes += minutes;
+                existingArtist.count += 1;
+                if (!existingArtist.trackId) existingArtist.trackId = trackId;
+                artistMap.set(artist, existingArtist);
 
-                    // Artist stats
-                    const existingArtist = artistMap.get(artist) || { minutes: 0, count: 0, trackId };
-                    existingArtist.minutes += minutes;
-                    existingArtist.count += 1;
-                    if (!existingArtist.trackId) existingArtist.trackId = trackId;
-                    artistMap.set(artist, existingArtist);
+                // Track stats
+                const trackKey = `${artist}|||${trackName}`;
+                const existingTrack = trackMap.get(trackKey) || { name: trackName, artist, minutes: 0, count: 0, trackId };
+                existingTrack.minutes += minutes;
+                existingTrack.count += 1;
+                trackMap.set(trackKey, existingTrack);
+                continue;
+            }
 
-                    // Track stats
-                    const trackKey = `${artist}|||${trackName}`;
-                    const existingTrack = trackMap.get(trackKey) || { name: trackName, artist, minutes: 0, count: 0, trackId };
-                    existingTrack.minutes += minutes;
-                    existingTrack.count += 1;
-                    trackMap.set(trackKey, existingTrack);
-                    continue;
-                }
+            totalMinutes += minutes;
 
-                totalMinutes += minutes;
+            // Parse date for monthly breakdown
+            const date = new Date(item.date);
+            const month = date.getMonth();
+            if (month >= 0 && month < 12) {
+                monthlyMinutes[month] += minutes;
+            }
 
-                // Parse date for monthly breakdown
-                const date = new Date(item.date);
-                const month = date.getMonth();
-                if (month >= 0 && month < 12) {
-                    monthlyMinutes[month] += minutes;
-                }
-
-                // Count by type
-                if (itemType === 'movie') {
-                    totalMovies++;
-                    const name = item.item_name;
-                    const existing = movieMap.get(name) || { name, minutes: 0, count: 0 };
-                    existing.minutes += minutes;
-                    existing.count += 1;
-                    movieMap.set(name, existing);
-                } else if (itemType === 'episode') {
-                    totalEpisodes++;
-                    const showName = item.item_name.split(' - ')[0] || item.item_name;
-                    const existing = showMap.get(showName) || { name: showName, minutes: 0, count: 0 };
-                    existing.minutes += minutes;
-                    existing.count += 1;
-                    showMap.set(showName, existing);
-                }
+            // Count by type
+            if (itemType === 'movie') {
+                totalMovies++;
+                const name = item.item_name;
+                const existing = movieMap.get(name) || { name, minutes: 0, count: 0 };
+                existing.minutes += minutes;
+                existing.count += 1;
+                movieMap.set(name, existing);
+            } else if (itemType === 'episode') {
+                totalEpisodes++;
+                const showName = item.item_name.split(' - ')[0] || item.item_name;
+                const existing = showMap.get(showName) || { name: showName, minutes: 0, count: 0 };
+                existing.minutes += minutes;
+                existing.count += 1;
+                showMap.set(showName, existing);
             }
         }
 
@@ -367,7 +537,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {  // add cookies
         const topArtistsRaw = [...artistMap.entries()]
             .sort((a, b) => b[1].minutes - a[1].minutes)
             .slice(0, 5);
-        
+
         const topTracksRaw = [...trackMap.values()]
             .sort((a, b) => b.count - a.count)
             .slice(0, 5);

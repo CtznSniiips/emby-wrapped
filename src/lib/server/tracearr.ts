@@ -152,7 +152,7 @@ function resolveTotalPages(
     page: number,
     pageSize: number,
     fetchedCount: number
-): number {
+): { totalPages: number; known: boolean } {
     const pagination = (payload.pagination ?? payload.meta ?? payload.pageInfo) as Record<string, unknown> | undefined;
 
     const directTotalPages =
@@ -163,7 +163,7 @@ function resolveTotalPages(
         readPositiveNumber(payload.lastPage);
 
     if (directTotalPages) {
-        return Math.max(1, Math.ceil(directTotalPages));
+        return { totalPages: Math.max(1, Math.ceil(directTotalPages)), known: true };
     }
 
     const totalItems =
@@ -175,10 +175,12 @@ function resolveTotalPages(
         readPositiveNumber(payload.count);
 
     if (totalItems) {
-        return Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize)));
+        return { totalPages: Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize))), known: true };
     }
 
-    return fetchedCount >= pageSize ? page + 1 : page;
+    // No pagination metadata in the payload at all — we can only guess one
+    // page ahead at a time, so the caller must keep fetching sequentially.
+    return { totalPages: fetchedCount >= pageSize ? page + 1 : page, known: false };
 }
 
 async function fetchTracearrHistoryPage(
@@ -190,7 +192,7 @@ async function fetchTracearrHistoryPage(
     startDate: string,
     endDate: string,
     includeDateFilters: boolean
-): Promise<{ items: TracearrRecord[]; totalPages: number; }> {
+): Promise<{ items: TracearrRecord[]; totalPages: number; totalPagesKnown: boolean; }> {
     const url = new URL(`${tracearrUrl}/api/v1/public/history`);
     url.searchParams.set('page', String(page));
     url.searchParams.set('pageSize', String(pageSize));
@@ -222,9 +224,9 @@ async function fetchTracearrHistoryPage(
         (Array.isArray(payload.results) && payload.results as TracearrRecord[]) ||
         (Array.isArray(payload.records) && payload.records as TracearrRecord[]) ||
         [];
-    const totalPages = resolveTotalPages(payload, page, pageSize, items.length);
+    const { totalPages, known } = resolveTotalPages(payload, page, pageSize, items.length);
 
-    return { items, totalPages };
+    return { items, totalPages, totalPagesKnown: known };
 }
 
 function normalizeTracearrRecord(
@@ -400,6 +402,79 @@ interface TracearrAllActivityOptions {
     days: number;
 }
 
+const PARALLEL_PAGE_BATCH_SIZE = 8;
+
+/**
+ * Fetch every page of Tracearr history for a date range.
+ * Fetches page 1 first (retrying without date filters if the plugin
+ * returns nothing for the range). If the response reports a real total
+ * page/item count, the remaining pages are fetched concurrently in
+ * batches. If the API gives no pagination metadata at all, we fall back
+ * to the original one-page-at-a-time loop since we can't know how many
+ * pages exist ahead of time.
+ */
+async function fetchAllTracearrHistoryPages(
+    tracearrUrl: string,
+    tracearrApiKey: string,
+    tracearrTimezone: string,
+    startDate: Date,
+    endDate: Date,
+    maxPages: number
+): Promise<TracearrRecord[]> {
+    const pageSize = 100;
+    const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
+    const startStr = dateOnly(startDate);
+    const endStr = dateOnly(endDate);
+
+    let includeDateFilters = true;
+    let firstPage = await fetchTracearrHistoryPage(
+        tracearrUrl, tracearrApiKey, tracearrTimezone, 1, pageSize, startStr, endStr, includeDateFilters
+    );
+
+    if (includeDateFilters && firstPage.items.length === 0) {
+        includeDateFilters = false;
+        firstPage = await fetchTracearrHistoryPage(
+            tracearrUrl, tracearrApiKey, tracearrTimezone, 1, pageSize, startStr, endStr, includeDateFilters
+        );
+    }
+
+    const allRows: TracearrRecord[] = [...firstPage.items];
+    const totalPages = Math.min(firstPage.totalPages, maxPages);
+
+    if (totalPages <= 1) {
+        return allRows;
+    }
+
+    if (firstPage.totalPagesKnown) {
+        // Real total available — fetch the rest concurrently in batches.
+        const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+        for (let i = 0; i < remainingPages.length; i += PARALLEL_PAGE_BATCH_SIZE) {
+            const batch = remainingPages.slice(i, i + PARALLEL_PAGE_BATCH_SIZE);
+            const results = await Promise.all(
+                batch.map((p) =>
+                    fetchTracearrHistoryPage(tracearrUrl, tracearrApiKey, tracearrTimezone, p, pageSize, startStr, endStr, includeDateFilters)
+                )
+            );
+            for (const r of results) allRows.push(...r.items);
+        }
+        return allRows;
+    }
+
+    // Total unknown — keep discovering pages sequentially, same as before.
+    let page = 2;
+    let discoveredTotalPages = totalPages;
+    while (page <= discoveredTotalPages) {
+        const pageData = await fetchTracearrHistoryPage(
+            tracearrUrl, tracearrApiKey, tracearrTimezone, page, pageSize, startStr, endStr, includeDateFilters
+        );
+        allRows.push(...pageData.items);
+        discoveredTotalPages = Math.min(pageData.totalPages, maxPages);
+        page += 1;
+    }
+
+    return allRows;
+}
+
 export async function getAllTracearrPlaybackActivity({
     tracearrUrl,
     tracearrApiKey,
@@ -410,37 +485,16 @@ export async function getAllTracearrPlaybackActivity({
     const endDate = new Date();
     const startDate = new Date();
     startDate.setUTCDate(endDate.getUTCDate() - Math.max(1, days));
-    const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
 
-    const pageSize = 100;
     const maxPages = 500;
-    const allRows: TracearrRecord[] = [];
-    let page = 1;
-    let totalPages = 1;
-    let includeDateFilters = true;
-
-    do {
-        const pageData = await fetchTracearrHistoryPage(
-            tracearrUrl,
-            tracearrApiKey,
-            tracearrTimezone,
-            page,
-            pageSize,
-            dateOnly(startDate),
-            dateOnly(endDate),
-            includeDateFilters
-        );
-        if (page === 1 && includeDateFilters && pageData.items.length === 0) {
-            includeDateFilters = false;
-            page = 1;
-            totalPages = 1;
-            allRows.length = 0;
-            continue;
-        }
-        allRows.push(...pageData.items);
-        totalPages = Math.min(pageData.totalPages, maxPages);
-        page += 1;
-    } while (page <= totalPages);
+    const allRows = await fetchAllTracearrHistoryPages(
+        tracearrUrl,
+        tracearrApiKey,
+        tracearrTimezone,
+        startDate,
+        endDate,
+        maxPages
+    );
 
     const usernameToId = new Map<string, string>();
     for (const [id, name] of users) {
@@ -501,42 +555,15 @@ export async function getTracearrUserPlaybackActivity({
     const startDate = new Date();
     startDate.setUTCDate(endDate.getUTCDate() - Math.max(1, days));
 
-    const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
-    const pageSize = 100;
     const maxPages = 500;
-    const tracearrRows: TracearrRecord[] = [];
-    let page = 1;
-    let totalPages = 1;
-    let includeDateFilters = true;
-
-    do {
-        const pageData = await fetchTracearrHistoryPage(
-            tracearrUrl,
-            tracearrApiKey,
-            tracearrTimezone,
-            page,
-            pageSize,
-            dateOnly(startDate),
-            dateOnly(endDate),
-            includeDateFilters
-        );
-        if (page === 1 && includeDateFilters && pageData.items.length === 0) {
-            includeDateFilters = false;
-            page = 1;
-            totalPages = 1;
-            tracearrRows.length = 0;
-            continue;
-        }
-
-        console.log(
-            `Tracearr page ${page}/${totalPages}, got ${pageData.items.length} items, resolved totalPages: ${pageData.totalPages}`
-        );
-
-        tracearrRows.push(...pageData.items);
-        totalPages = Math.min(Math.max(pageData.totalPages, page), maxPages);
-
-        page += 1;
-    } while (page <= totalPages);
+    const tracearrRows = await fetchAllTracearrHistoryPages(
+        tracearrUrl,
+        tracearrApiKey,
+        tracearrTimezone,
+        startDate,
+        endDate,
+        maxPages
+    );
 
     const aliasMap = buildUsernameAliasMap();
 

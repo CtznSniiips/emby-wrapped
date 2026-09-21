@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.0] - 2026-07-24
+
+### Added
+- A few methods to speed up data loading
+  - Implemented a 7-day TMDB poster cache
+  - Implemented sequential Tracearr data lookups
+  - Cached data for completed years and completed months
+
 ## [2.5.0] - 2026-05-04
 
 ### Fixed

@@ -96,20 +96,35 @@ class TMDBClient {
     }
 
     /**
-     * Search for content and get poster URL directly
+     * Search for content and get poster URL directly.
+     * Results are cached (by name+type) for POSTER_CACHE_TTL since poster
+     * art essentially never changes for a given title.
      */
     async findPosterUrl(name: string, type: 'tv' | 'movie'): Promise<string | null> {
+        const cacheKey = `${type}:${name.toLowerCase().trim()}`;
+        const cached = posterCache.get(cacheKey);
+        if (cached && Date.now() - cached.time < POSTER_CACHE_TTL) {
+            return cached.url;
+        }
+
         const result = type === 'tv'
             ? await this.searchTV(name)
             : await this.searchMovie(name);
 
-        if (!result) return null;
-        return this.getPosterUrl(result);
+        const url = result ? this.getPosterUrl(result) : null;
+        posterCache.set(cacheKey, { url, time: Date.now() });
+        return url;
     }
 }
 
 // Export singleton
 export const tmdb = new TMDBClient();
+
+// Cache for TMDB poster lookups keyed by "type:name". Poster art for a given
+// title essentially never changes, so this is cached for a long time to
+// avoid re-hitting the TMDB API on every server-stats refresh.
+const posterCache = new Map<string, { url: string | null; time: number }>();
+const POSTER_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Cache for TMDB lookups to avoid repeated API calls
 const imageCache = new Map<string, string | null>();

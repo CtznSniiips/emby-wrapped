@@ -18,9 +18,18 @@ services:
       - TRACEARR_URL=${TRACEARR_URL:-}
       - TRACEARR_API_KEY=${TRACEARR_API_KEY:-}
       - TRACEARR_USERNAME_ALIASES=${TRACEARR_USERNAME_ALIASES:-}
+      - STATS_CACHE_DIR=/app/cache
+      - CACHE_WARMUP_ENABLED=${CACHE_WARMUP_ENABLED:-true}
+      - CACHE_WARMUP_CONCURRENCY=${CACHE_WARMUP_CONCURRENCY:-3}
+      - CACHE_REFRESH_INTERVAL_MINUTES=${CACHE_REFRESH_INTERVAL_MINUTES:-15}
     volumes:
       # Mount custom music files (optional)
       - ./music:/app/static/music:ro
+      # Persistent per-user stats cache. Without this, the cache lives on
+      # the container's writable tmpfs and is lost on every restart, so a
+      # full re-warm (all users x all completed periods) runs again each
+      # time the container comes up.
+      - stats-cache:/app/cache
     restart: unless-stopped
     # Security: Read-only root filesystem
     read_only: true
@@ -39,3 +48,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  # Named volume backing /app/cache. Swap this for a bind mount
+  # (e.g. "./cache:/app/cache") if you'd rather have the cache files
+  # directly on the host.
+  stats-cache:

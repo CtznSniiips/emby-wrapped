@@ -95,9 +95,17 @@ services:
       - CACHE_TTL=86400  # Optional
       - FILTER_USER_ID=  # Optional: filter by user's library
       - PORT=3003       # Optional: app listen port inside container
+      - STATS_CACHE_DIR=/app/cache          # Optional: see Caching section below
+      - CACHE_WARMUP_ENABLED=true            # Optional
+      - CACHE_WARMUP_CONCURRENCY=3           # Optional
+      - CACHE_REFRESH_INTERVAL_MINUTES=15    # Optional
     volumes:
       - ./music:/app/static/music:ro  # Optional: custom background music
+      - stats-cache:/app/cache        # Optional but recommended: persists the stats cache across restarts
     restart: unless-stopped
+
+volumes:
+  stats-cache:
 ```
 
 3. Run:
@@ -176,6 +184,21 @@ npm run preview
 | `FILTER_USER_ID` | Emby User ID to use for library filtering (useful for hiding NSFW content) | No |
 | `CACHE_TTL` | Cache duration in seconds for statistics (default: 86400) | No |
 | `PORT` | Server port used by the app/container (default: `3003`). | No |
+| `STATS_CACHE_DIR` | Directory for the per-user stats cache. Point this at a mounted volume to survive restarts (default: `/tmp/stats-cache` in production, `.cache/stats` in dev — both wiped on restart). | No |
+| `CACHE_WARMUP_ENABLED` | Pre-generate the server-wide and per-user caches for every completed year/month at startup instead of computing lazily (default: `true`). | No |
+| `CACHE_WARMUP_CONCURRENCY` | How many users' stats to warm at once during startup warmup (default: `3`). | No |
+| `CACHE_REFRESH_INTERVAL_MINUTES` | How often to check for a newly-completed period and refresh the current, in-progress period in the background (default: `15`). | No |
+
+## Caching
+
+Emby Wrapped caches two things so repeat visits (and other users looking at the same period) don't re-hit Emby/Tracearr/TMDB every time:
+
+- **Server-wide stats** (the community cards) are cached in memory, shared by every visitor for a given period.
+- **Per-user stats** (your personal Wrapped cards) are cached to disk, one JSON file per `userId`/period, under `STATS_CACHE_DIR`.
+
+A completed year or month can't change, so once it's cached it's kept indefinitely; only the current, in-progress period gets a short TTL. On startup, both caches are pre-generated for every completed period in the background (this doesn't block the app from serving requests), and a recurring job keeps the current period warm and picks up newly-completed periods as months/years roll over. This behavior can be tuned or disabled with the `CACHE_WARMUP_*` variables above.
+
+**Both caches reset on container restart** unless you mount a volume for `STATS_CACHE_DIR` (the in-memory server-wide cache always resets — that's unavoidable for an in-memory cache — but it re-warms quickly since the warmup runs again at boot). Without a mounted volume, the per-user cache falls back to the container's writable tmpfs (`/tmp`) or, in the default `docker-compose.yml`, the `stats-cache` named volume shown above — either way it's rebuilt from scratch by the startup warmup after every restart. Mounting a persistent volume at `/app/cache` (the default in the compose example) avoids that full re-warm and keeps stats instantly available immediately after a restart.
 
 ## Background Music
 

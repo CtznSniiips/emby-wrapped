@@ -97,7 +97,8 @@ services:
       - PORT=3003       # Optional: app listen port inside container
       - STATS_CACHE_DIR=/app/cache          # Optional: see Caching section below
       - CACHE_WARMUP_ENABLED=true            # Optional
-      - CACHE_WARMUP_CONCURRENCY=3           # Optional
+      - CACHE_WARMUP_CONCURRENCY=1           # Optional
+      - CACHE_WARMUP_DELAY_MS=1000           # Optional
       - CACHE_REFRESH_INTERVAL_MINUTES=15    # Optional
     volumes:
       - ./music:/app/static/music:ro  # Optional: custom background music
@@ -186,7 +187,8 @@ npm run preview
 | `PORT` | Server port used by the app/container (default: `3003`). | No |
 | `STATS_CACHE_DIR` | Directory for the per-user stats cache. Point this at a mounted volume to survive restarts (default: `/tmp/stats-cache` in production, `.cache/stats` in dev — both wiped on restart). | No |
 | `CACHE_WARMUP_ENABLED` | Pre-generate the server-wide and per-user caches for every completed year/month at startup instead of computing lazily (default: `true`). | No |
-| `CACHE_WARMUP_CONCURRENCY` | How many users' stats to warm at once during startup warmup (default: `3`). | No |
+| `CACHE_WARMUP_CONCURRENCY` | How many users' stats to warm at once during startup warmup. Each user's warmup is itself a burst of several requests, so keep this low for a lightweight self-hosted Tracearr/Emby instance (default: `1`). | No |
+| `CACHE_WARMUP_DELAY_MS` | Milliseconds to pause after each user's warmup before starting the next, per concurrent slot. Set to `0` to disable (default: `1000`). | No |
 | `CACHE_REFRESH_INTERVAL_MINUTES` | How often to check for a newly-completed period and refresh the current, in-progress period in the background (default: `15`). | No |
 
 ## Caching
@@ -197,6 +199,8 @@ Emby Wrapped caches two things so repeat visits (and other users looking at the 
 - **Per-user stats** (your personal Wrapped cards) are cached to disk, one JSON file per `userId`/period, under `STATS_CACHE_DIR`.
 
 A completed year or month can't change, so once it's cached it's kept indefinitely; only the current, in-progress period gets a short TTL. On startup, both caches are pre-generated for every completed period in the background (this doesn't block the app from serving requests), and a recurring job keeps the current period warm and picks up newly-completed periods as months/years roll over. This behavior can be tuned or disabled with the `CACHE_WARMUP_*` variables above.
+
+**If you use Tracearr for history** instead of Emby's Playback Reporting plugin: each user's stats computation already dedupes its own two internal history fetches into one, but warming many users still means many separate full-history requests against Tracearr in a short window. `CACHE_WARMUP_CONCURRENCY` and `CACHE_WARMUP_DELAY_MS` default to conservative values (1 user at a time, 1s between users) for this reason — if warmup logs show Tracearr errors (e.g. `500 Internal Server Error`), that's Tracearr struggling with the burst; lower concurrency further isn't an option below 1, but you can raise `CACHE_WARMUP_DELAY_MS` to space requests out more.
 
 **Both caches reset on container restart** unless you mount a volume for `STATS_CACHE_DIR` (the in-memory server-wide cache always resets — that's unavoidable for an in-memory cache — but it re-warms quickly since the warmup runs again at boot). Without a mounted volume, the per-user cache falls back to the container's writable tmpfs (`/tmp`) or, in the default `docker-compose.yml`, the `stats-cache` named volume shown above — either way it's rebuilt from scratch by the startup warmup after every restart. Mounting a persistent volume at `/app/cache` (the default in the compose example) avoids that full re-warm and keeps stats instantly available immediately after a restart.
 

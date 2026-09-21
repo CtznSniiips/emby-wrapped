@@ -24,8 +24,26 @@ import { getOrComputeUserStats, getStatsCacheDir } from './userStatsCache';
 // ---------------------------------------------------------------------
 
 const WARMUP_ENABLED = (env.CACHE_WARMUP_ENABLED ?? 'true').trim().toLowerCase() !== 'false';
-const WARMUP_CONCURRENCY = Math.max(1, Number(env.CACHE_WARMUP_CONCURRENCY) || 3);
+// Defaults to 1 (no parallel users) rather than something higher: each user's
+// stats computation can itself fan out into many concurrent HTTP requests
+// (Tracearr history pagination, TMDB lookups, Emby item batches), so running
+// several users at once multiplies that fan-out and can overwhelm a
+// lightweight self-hosted Tracearr/Emby instance. Raise this only if your
+// setup has headroom to spare.
+const WARMUP_CONCURRENCY = Math.max(1, Number(env.CACHE_WARMUP_CONCURRENCY) || 1);
+// A small gap between each user's warmup, even at concurrency 1: each user's
+// stats computation is itself a burst of several/many requests (Tracearr
+// history pagination, TMDB lookups, Emby item batches), so back-to-back users
+// with zero gap can still look like a sustained hammering to a lightweight
+// self-hosted Tracearr/Emby instance. Default 1s; set to 0 to disable.
+const WARMUP_DELAY_MS = env.CACHE_WARMUP_DELAY_MS !== undefined
+    ? Math.max(0, Number(env.CACHE_WARMUP_DELAY_MS) || 0)
+    : 1000;
 const REFRESH_INTERVAL_MS = Math.max(1, Number(env.CACHE_REFRESH_INTERVAL_MINUTES) || 15) * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Periods we've already warmed at least once, so the recurring refresh
 // only needs to act on newly-completed ones instead of re-scanning everything.
@@ -59,6 +77,8 @@ async function warmUserStatsForPeriod(user: EmbyUser, periodParam: string, force
         await getOrComputeUserStats(user.Id, user.Name, timeRangeStr, forceRefresh);
     } catch (e) {
         console.warn(`[cache-warmup] Failed to warm stats for user "${user.Name}" / "${periodParam}":`, e);
+    } finally {
+        if (WARMUP_DELAY_MS > 0) await sleep(WARMUP_DELAY_MS);
     }
 }
 

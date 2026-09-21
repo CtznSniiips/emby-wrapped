@@ -115,6 +115,19 @@ export interface EmbyItem {
     AlbumPrimaryImageTag?: string;
 }
 
+// Short-lived cache for getUserPlaybackActivity, keyed by userId+days+source.
+// aggregateUserStats calls this once directly and once more indirectly via
+// getDeviceNameBreakdown (same userId, same days) for every single user it
+// processes. Under Tracearr, each call re-fetches and paginates through the
+// *entire* history for the date range just to filter it down client-side, so
+// without this the two calls double every user's Tracearr load - and with
+// cache warmup now calling this for every user x every period back-to-back,
+// that doubling turned into a burst large enough to 500 Tracearr outright.
+// Caches the in-flight promise too, so two calls arriving before the first
+// one resolves share it instead of firing a second request.
+const PLAYBACK_ACTIVITY_DEDUPE_TTL_MS = 60 * 1000;
+const playbackActivityDedupeCache = new Map<string, { promise: Promise<PlaybackActivity[]>; time: number }>();
+
 class EmbyClient {
     get tracearrUrl(): string {
         return (env.TRACEARR_URL || '').trim().replace(/\/$/, '');
@@ -219,6 +232,25 @@ class EmbyClient {
      * Get playback activity for a specific user from the Playback Reporting plugin
      */
     async getUserPlaybackActivity(userId: string, days: number = 365): Promise<PlaybackActivity[]> {
+        const dedupeKey = `${this.useTracearrHistory ? 'tracearr' : 'reporting'}:${userId}:${days}`;
+        const cached = playbackActivityDedupeCache.get(dedupeKey);
+        if (cached && Date.now() - cached.time < PLAYBACK_ACTIVITY_DEDUPE_TTL_MS) {
+            return cached.promise;
+        }
+
+        const fetchPromise = this.fetchUserPlaybackActivityUncached(userId, days);
+        playbackActivityDedupeCache.set(dedupeKey, { promise: fetchPromise, time: Date.now() });
+
+        try {
+            return await fetchPromise;
+        } catch (e) {
+            // Don't let a failed fetch poison the cache for the next caller.
+            playbackActivityDedupeCache.delete(dedupeKey);
+            throw e;
+        }
+    }
+
+    private async fetchUserPlaybackActivityUncached(userId: string, days: number): Promise<PlaybackActivity[]> {
         if (this.useTracearrHistory) {
             const users = await this.getUsers();
             const requestedUser = users.find((user) => user.Id === userId);

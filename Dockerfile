@@ -32,6 +32,11 @@ COPY --from=builder --chown=sveltekit:nodejs /app/node_modules ./node_modules
 # Create static/music directory for volume mounting
 RUN mkdir -p /app/static/music && chown -R sveltekit:nodejs /app/static
 
+# Create the persistent per-user stats cache directory. Mount a volume here
+# (see docker-compose.yml) to keep the cache warm across restarts; without
+# one, this is just an empty writable dir inside the container's own layer.
+RUN mkdir -p /app/cache && chown -R sveltekit:nodejs /app/cache
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3003

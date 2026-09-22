@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0] - 2026-09-22
+
+### Added
+- **Startup cache warmup**: Server-wide and per-user stats for every completed year/month are now pre-generated in the background as soon as the container starts, instead of computing lazily on each visitor's first request. A recurring background job keeps the current, in-progress period warm and picks up newly-completed periods as months/years roll over. Tunable via `CACHE_WARMUP_ENABLED`, `CACHE_WARMUP_CONCURRENCY`, `CACHE_WARMUP_DELAY_MS`, and `CACHE_REFRESH_INTERVAL_MINUTES`.
+- **Persistent per-user stats cache**: `STATS_CACHE_DIR` can now point at a mounted volume (`/app/cache` by default in `docker-compose.yml`) so the per-user cache survives container restarts instead of rebuilding from scratch every time.
+- **Configurable Tracearr page concurrency**: `TRACEARR_PAGE_CONCURRENCY` controls how many history pages are fetched at once per request (default lowered from a hardcoded 8 to 4).
+- **Per-user month-decomposed activity cache**: Per-user stats now cache each completed calendar month's raw playback activity indefinitely, the same way server-wide stats already did (`userActivityCache.ts`, mirroring `serverStatsCache.ts`). A "current year" request for a user now only ever fetches the still-open current month from Tracearr/Emby instead of re-querying the entire year-to-date history — because that history can't change for months that are already over.
+
+### Fixed
+- **SSR fetch error on every page load**: The homepage's server-stats fetch used a browser-relative URL that also ran during server-side rendering, always failing there (`Failed to parse URL from /api/server-stats?...`) before the page recovered on hydration. Now skipped during SSR since it could never succeed there anyway.
+- **Duplicate Tracearr history fetch per user**: Each user's stats computation fetched the same Tracearr history twice (once directly, once again via the device-breakdown report). Now deduplicated, roughly halving Tracearr load per user.
+- **Tracearr connection resilience**: Transient network failures (`ECONNRESET`, closed sockets, timeouts) and `5xx` responses are now retried with backoff instead of failing outright; a genuine `4xx` is not retried.
+- **Cache warmup/refresh overlap**: The initial warmup and the recurring refresh could run concurrently if a pass took longer than the refresh interval, doubling the load on Tracearr/Emby. A run guard now skips a scheduled refresh if a previous pass is still going.
+- **Runaway per-user "current year" refresh**: The recurring refresh was force-recomputing each user's full current-year stats (a growing, multi-month Tracearr history re-fetch with no partial caching) every 15 minutes, indefinitely — the main cause of sustained Tracearr CPU load. It's now only computed once at startup; afterwards it follows its normal 1-hour cache and is only recomputed when an actual visitor requests it. Only the much cheaper current-month view is kept warm on the recurring schedule.
+
 ## [2.6.0] - 2026-07-24
 
 ### Added

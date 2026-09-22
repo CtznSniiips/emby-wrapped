@@ -2,31 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.7.1] - 2026-09-22
-
-### Added
-- **Per-user month-decomposed activity cache**: Per-user stats now cache each completed
-  calendar month's raw playback activity indefinitely, the same way server-wide stats
-  already did (`userActivityCache.ts`, mirroring `serverStatsCache.ts`). A "current year"
-  request for a user now only ever fetches the still-open current month from Tracearr/Emby
-  instead of re-querying the entire year-to-date history — because that history can't change
-  for months that are already over.
-
-### Changed
-- **Removed the "current year" refresh band-aid**: 2.7.0 worked around the cost of a full
-  per-user year-to-date refetch by only forcing it once at startup, then again on a slow,
-  separate cadence (`CACHE_USER_YEAR_REFRESH_INTERVAL_MINUTES`) timed just under the cache
-  TTL. With per-user month caching in place, that refresh is now cheap enough to fold back
-  into the normal `CACHE_REFRESH_INTERVAL_MINUTES` schedule for both server-wide and per-user
-  stats, so `CACHE_USER_YEAR_REFRESH_INTERVAL_MINUTES` has been removed — this fixes both the
-  earlier CPU-load problem *and* the cold-cache latency problem at the same time, rather than
-  trading one off against the other.
-- **Device breakdown avoids a second fetch under Tracearr**: The per-user device-breakdown
-  (used for the "devices" stat) is now derived directly from the activity already fetched for
-  the request instead of triggering a second call into `getUserPlaybackActivity`, which would
-  otherwise no longer line up with the existing short-lived dedupe cache now that activity is
-  fetched in month-scoped windows rather than one fixed day count.
-
 ## [2.7.0] - 2026-09-22
 
 ### Added
@@ -41,6 +16,7 @@ All notable changes to this project will be documented in this file.
   restarts instead of rebuilding from scratch every time.
 - **Configurable Tracearr page concurrency**: `TRACEARR_PAGE_CONCURRENCY` controls how many
   history pages are fetched at once per request (default lowered from a hardcoded 8 to 4).
+- **Per-user month-decomposed activity cache**: Per-user stats now cache each completed calendar month's raw playback activity indefinitely, the same way server-wide stats already did (`userActivityCache.ts`, mirroring `serverStatsCache.ts`). A "current year" request for a user now only ever fetches the still-open current month from Tracearr/Emby instead of re-querying the entire year-to-date history — because that history can't change for months that are already over.
 
 ### Fixed
 - **SSR fetch error on every page load**: The homepage's server-stats fetch used a

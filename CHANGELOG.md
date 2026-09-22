@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0] - 2026-09-22
+### Added
+- **Startup cache warmup**: Server-wide and per-user stats for every completed year/month are now pre-generated in the background as soon as the container starts, instead of computing lazily on each visitor's first request. A recurring background job keeps the current, in-progress period warm and picks up newly-completed periods as months/years roll over. Tunable via `CACHE_WARMUP_ENABLED`, `CACHE_WARMUP_CONCURRENCY`, `CACHE_WARMUP_DELAY_MS`, and `CACHE_REFRESH_INTERVAL_MINUTES`.
+- **Persistent per-user stats cache**: `STATS_CACHE_DIR` can now point at a mounted volume (`/app/cache` by default in `docker-compose.yml`) so the per-user cache survives container restarts instead of rebuilding from scratch every time.
+- **Configurable Tracearr page concurrency**: `TRACEARR_PAGE_CONCURRENCY` controls how many history pages are fetched at once per request (default lowered from a hardcoded 8 to 4).
+
+### Fixed
+- **SSR fetch error on every page load**: The homepage's server-stats fetch used a browser-relative URL that also ran during server-side rendering, always failing there (`Failed to parse URL from /api/server-stats?...`) before the page recovered on hydration. Now skipped during SSR since it could never succeed there anyway.
+
 ## [2.6.0] - 2026-07-24
 
 ### Added

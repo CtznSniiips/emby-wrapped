@@ -51,6 +51,26 @@ const warmedCompletedPeriods = new Set<string>();
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+// Guards against the initial warmup and the recurring refresh (or two
+// recurring ticks) ever running at the same time. Without this, a pass
+// that runs longer than REFRESH_INTERVAL_MS - entirely possible once
+// throttled down for safety - lets the next tick start on top of it,
+// doubling the load on Tracearr/Emby instead of waiting its turn.
+let isWarmupRunning = false;
+
+async function runExclusive(label: string, fn: () => Promise<void>): Promise<void> {
+    if (isWarmupRunning) {
+        console.log(`[cache-warmup] Skipping ${label}: a previous warmup/refresh pass is still running.`);
+        return;
+    }
+    isWarmupRunning = true;
+    try {
+        await fn();
+    } finally {
+        isWarmupRunning = false;
+    }
+}
+
 /** Run `fn` over `items` with at most `limit` calls in flight at once. */
 async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
     let index = 0;
@@ -98,34 +118,55 @@ export async function runInitialWarmup(): Promise<void> {
         return;
     }
 
-    const startedAt = Date.now();
-    try {
-        const users = await emby.getUsers();
-        const completedPeriods = getCompletedPeriods();
+    await runExclusive('initial warmup', async () => {
+        const startedAt = Date.now();
+        try {
+            const users = await emby.getUsers();
+            const completedPeriods = getCompletedPeriods();
 
-        console.log(
-            `[cache-warmup] Starting: ${completedPeriods.length} completed period(s), ` +
-            `${users.length} user(s), per-user cache dir "${getStatsCacheDir()}".`
-        );
+            console.log(
+                `[cache-warmup] Starting: ${completedPeriods.length} completed period(s), ` +
+                `${users.length} user(s), per-user cache dir "${getStatsCacheDir()}".`
+            );
 
-        // Most-recent period first, since that's what people open first.
-        for (const period of completedPeriods) {
-            await warmPeriodForAllUsers(users, period);
-            warmedCompletedPeriods.add(period);
+            // Most-recent period first, since that's what people open first.
+            for (const period of completedPeriods) {
+                await warmPeriodForAllUsers(users, period);
+                warmedCompletedPeriods.add(period);
+            }
+
+            // Bonus: also warm the current, in-progress period so it's hot
+            // from the very first request too, not just completed ones.
+            // includeUserYearRefresh: true because this only happens once, at
+            // startup - unlike the recurring refresh, which deliberately
+            // skips the expensive per-user "current year" recompute (see
+            // refreshCurrentPeriod below).
+            await refreshCurrentPeriod(users, { includeUserYearRefresh: true });
+
+            console.log(`[cache-warmup] Finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
+        } catch (e) {
+            console.error('[cache-warmup] Initial warmup failed:', e);
         }
-
-        // Bonus: also warm the current, in-progress period so it's hot
-        // from the very first request too, not just completed ones.
-        await refreshCurrentPeriod(users);
-
-        console.log(`[cache-warmup] Finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
-    } catch (e) {
-        console.error('[cache-warmup] Initial warmup failed:', e);
-    }
+    });
 }
 
-/** Force-refresh the current year and current month-of-year period. */
-async function refreshCurrentPeriod(users: EmbyUser[]): Promise<void> {
+/**
+ * Force-refresh the current year and current month-of-year period.
+ *
+ * Server-wide stats decompose a year into per-month buckets and cache
+ * completed months indefinitely (see serverStatsCache.ts), so refreshing
+ * "current year" there is cheap - it only re-fetches the still-open month.
+ * Per-user stats have no such decomposition: a "current year" fetch always
+ * re-queries the ENTIRE year-to-date range from Tracearr/Emby for that one
+ * user, and that window only grows as the year goes on (by September,
+ * that's ~9 months of history, every time). Repeating that indefinitely on
+ * a 15-minute schedule for every user is what was keeping Tracearr pegged.
+ * So per-user "current year" is only force-refreshed when explicitly asked
+ * for (i.e. once, at startup) - the recurring refresh only keeps the much
+ * cheaper current *month* hot per-user, and leaves "current year" to its
+ * normal 1-hour cache TTL for whichever real visitor happens to look at it.
+ */
+async function refreshCurrentPeriod(users: EmbyUser[], options: { includeUserYearRefresh: boolean }): Promise<void> {
     const now = new Date();
     const currentYearParam = String(now.getFullYear());
     const currentMonthParam = `${now.getMonth() + 1}-${now.getFullYear()}`;
@@ -133,7 +174,15 @@ async function refreshCurrentPeriod(users: EmbyUser[]): Promise<void> {
     for (const period of [currentYearParam, currentMonthParam]) {
         const timeRange = parseTimeRange(period);
         if (!isCurrentPeriod(timeRange)) continue; // shouldn't happen, but stay safe
-        await warmPeriodForAllUsers(users, period, /* forceRefresh */ true);
+
+        await warmServerStatsForPeriod(period, /* forceRefresh */ true);
+
+        const isYearPeriod = timeRange.type === 'year';
+        if (isYearPeriod && !options.includeUserYearRefresh) {
+            continue;
+        }
+
+        await runWithConcurrency(users, WARMUP_CONCURRENCY, (user) => warmUserStatsForPeriod(user, period, /* forceRefresh */ true));
     }
 }
 
@@ -157,14 +206,19 @@ async function warmNewlyCompletedPeriods(users: EmbyUser[]): Promise<void> {
 export function scheduleRecurringRefresh(): void {
     if (!WARMUP_ENABLED || refreshTimer) return;
 
-    refreshTimer = setInterval(async () => {
-        try {
-            const users = await emby.getUsers();
-            await warmNewlyCompletedPeriods(users);
-            await refreshCurrentPeriod(users);
-        } catch (e) {
-            console.error('[cache-warmup] Recurring refresh failed:', e);
-        }
+    refreshTimer = setInterval(() => {
+        runExclusive('recurring refresh', async () => {
+            try {
+                const users = await emby.getUsers();
+                await warmNewlyCompletedPeriods(users);
+                // includeUserYearRefresh: false - see refreshCurrentPeriod's
+                // doc comment for why the recurring pass never forces the
+                // expensive per-user "current year" recompute.
+                await refreshCurrentPeriod(users, { includeUserYearRefresh: false });
+            } catch (e) {
+                console.error('[cache-warmup] Recurring refresh failed:', e);
+            }
+        });
     }, REFRESH_INTERVAL_MS);
 
     // Don't let this timer keep the process alive on its own if something

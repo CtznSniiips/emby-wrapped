@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { browser } from "$app/environment";
 	import { goto, invalidateAll } from "$app/navigation";
 	import { UNICODE, formatDuration } from "$lib/utils/format";
 	import CardStack from "$lib/components/CardStack.svelte";
@@ -59,8 +60,12 @@
 	// Track pending animation timeouts so they can be cancelled on card change
 	let animationTimeouts: ReturnType<typeof setTimeout>[] = [];
 
-	// Fetch server stats when selectedTimeRange changes
-	$: if (selectedTimeRange && authenticatedUser) {
+	// Fetch server stats when selectedTimeRange changes. Browser-only: this
+	// reactive statement also runs during SSR (selectedTimeRange and
+	// authenticatedUser both come from server-loaded data), but
+	// fetchServerStats calls fetch() with a relative URL, which only
+	// resolves against a page origin — meaningless during SSR.
+	$: if (browser && selectedTimeRange && authenticatedUser) {
 		fetchServerStats();
 	}
 

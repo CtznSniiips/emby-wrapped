@@ -183,6 +183,27 @@ function resolveTotalPages(
     return { totalPages: fetchedCount >= pageSize ? page + 1 : page, known: false };
 }
 
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Whether an error looks like a transient network hiccup (dropped
+ * connection, reset socket, DNS blip) rather than a real application
+ * error. Worth a short retry; a genuine 4xx/5xx response usually isn't.
+ */
+function isTransientNetworkError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED') {
+        return true;
+    }
+    return error.message === 'fetch failed';
+}
+
+const TRACEARR_MAX_RETRIES = 2;
+const TRACEARR_RETRY_BASE_DELAY_MS = 750;
+
 async function fetchTracearrHistoryPage(
     tracearrUrl: string,
     tracearrApiKey: string,
@@ -202,17 +223,46 @@ async function fetchTracearrHistoryPage(
         url.searchParams.set('endDate', endDate);
     }
 
-    const response = await fetch(url.toString(), {
-        headers: {
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${tracearrApiKey}`
-        }
-    });
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= TRACEARR_MAX_RETRIES; attempt++) {
+        try {
+            const response = await fetch(url.toString(), {
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${tracearrApiKey}`
+                }
+            });
 
-    if (!response.ok) {
-        throw new Error(`Tracearr API error: ${response.status} ${response.statusText}`);
+            if (!response.ok) {
+                // Retry a 5xx (Tracearr choking under load) same as a network
+                // error; a 4xx (bad auth, bad request) won't fix itself.
+                if (response.status >= 500 && attempt < TRACEARR_MAX_RETRIES) {
+                    lastError = new Error(`Tracearr API error: ${response.status} ${response.statusText}`);
+                    await sleep(TRACEARR_RETRY_BASE_DELAY_MS * (attempt + 1));
+                    continue;
+                }
+                throw new Error(`Tracearr API error: ${response.status} ${response.statusText}`);
+            }
+
+            return await parseTracearrHistoryPageResponse(response, page, pageSize);
+        } catch (e) {
+            if (isTransientNetworkError(e) && attempt < TRACEARR_MAX_RETRIES) {
+                lastError = e;
+                await sleep(TRACEARR_RETRY_BASE_DELAY_MS * (attempt + 1));
+                continue;
+            }
+            throw e;
+        }
     }
 
+    throw lastError instanceof Error ? lastError : new Error('Tracearr request failed after retries');
+}
+
+async function parseTracearrHistoryPageResponse(
+    response: Response,
+    page: number,
+    pageSize: number
+): Promise<{ items: TracearrRecord[]; totalPages: number; totalPagesKnown: boolean; }> {
     const payload = await response.json() as Record<string, unknown>;
     const items =
         (Array.isArray(payload) && payload as TracearrRecord[]) ||
@@ -402,7 +452,15 @@ interface TracearrAllActivityOptions {
     days: number;
 }
 
-const PARALLEL_PAGE_BATCH_SIZE = 8;
+// How many history pages to request from Tracearr at once. A single
+// history fetch for a user/period with a lot of watch history can need
+// many pages, so this alone can burst several concurrent connections to
+// Tracearr - independent of any concurrency limit on the cache warmup
+// itself. Defaults lower than before (4, was hardcoded to 8) since a
+// lightweight self-hosted Tracearr instance can drop connections under a
+// sustained run of these bursts; raise TRACEARR_PAGE_CONCURRENCY if yours
+// has headroom to spare.
+const PARALLEL_PAGE_BATCH_SIZE = Math.max(1, Number(env.TRACEARR_PAGE_CONCURRENCY) || 4);
 
 /**
  * Fetch every page of Tracearr history for a date range.

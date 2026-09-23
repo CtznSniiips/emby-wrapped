@@ -14,9 +14,18 @@ import { getOrComputeUserStats, getStatsCacheDir } from './userStatsCache';
 //   1. Warms any period that has *just* become completed (month/year
 //      rollover), so the next completed period is ready before anyone
 //      asks for it.
-//   2. Force-refreshes the current, in-progress period, so its short
-//      TTL (5 min server-wide / 1 hr per-user) expires into a warm
-//      recompute instead of making a real user wait for one.
+//   2. Force-refreshes the current, in-progress period (both "current
+//      year" and "current month"), so its short TTL (5 min server-wide /
+//      1 hr per-user) expires into a warm recompute instead of making a
+//      real user wait for one.
+//
+// Both server-wide and per-user stats decompose a "year" period into
+// per-month buckets and cache completed months indefinitely (see
+// serverStatsCache.ts and userActivityCache.ts), so refreshing "current
+// year" here is cheap - it only ever re-fetches the still-open month, not
+// the whole year-to-date range. That's what makes it safe to force-refresh
+// on every tick of this same recurring schedule, for both server-wide and
+// per-user stats alike, without repeating an expensive full-history fetch.
 //
 // All of this is best-effort: a failure warming one user/period is
 // logged and skipped rather than aborting the whole run, and the whole
@@ -53,9 +62,9 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 // Guards against the initial warmup and the recurring refresh (or two
 // recurring ticks) ever running at the same time. Without this, a pass
-// that runs longer than REFRESH_INTERVAL_MS - entirely possible once
-// throttled down for safety - lets the next tick start on top of it,
-// doubling the load on Tracearr/Emby instead of waiting its turn.
+// that runs longer than REFRESH_INTERVAL_MS - entirely possible if Emby,
+// Tracearr, or TMDB is slow to respond - lets the next tick start on top of
+// it, doubling the load instead of waiting its turn.
 let isWarmupRunning = false;
 
 async function runExclusive(label: string, fn: () => Promise<void>): Promise<void> {
@@ -137,11 +146,7 @@ export async function runInitialWarmup(): Promise<void> {
 
             // Bonus: also warm the current, in-progress period so it's hot
             // from the very first request too, not just completed ones.
-            // includeUserYearRefresh: true because this only happens once, at
-            // startup - unlike the recurring refresh, which deliberately
-            // skips the expensive per-user "current year" recompute (see
-            // refreshCurrentPeriod below).
-            await refreshCurrentPeriod(users, { includeUserYearRefresh: true });
+            await refreshCurrentPeriod(users);
 
             console.log(`[cache-warmup] Finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
         } catch (e) {
@@ -151,22 +156,17 @@ export async function runInitialWarmup(): Promise<void> {
 }
 
 /**
- * Force-refresh the current year and current month-of-year period.
+ * Force-refresh the current year and current month-of-year period, for
+ * both server-wide and per-user stats.
  *
- * Server-wide stats decompose a year into per-month buckets and cache
- * completed months indefinitely (see serverStatsCache.ts), so refreshing
- * "current year" there is cheap - it only re-fetches the still-open month.
- * Per-user stats have no such decomposition: a "current year" fetch always
- * re-queries the ENTIRE year-to-date range from Tracearr/Emby for that one
- * user, and that window only grows as the year goes on (by September,
- * that's ~9 months of history, every time). Repeating that indefinitely on
- * a 15-minute schedule for every user is what was keeping Tracearr pegged.
- * So per-user "current year" is only force-refreshed when explicitly asked
- * for (i.e. once, at startup) - the recurring refresh only keeps the much
- * cheaper current *month* hot per-user, and leaves "current year" to its
- * normal 1-hour cache TTL for whichever real visitor happens to look at it.
+ * Both decompose a year into per-month buckets and cache completed months
+ * indefinitely (see serverStatsCache.ts and userActivityCache.ts), so
+ * refreshing "current year" here is cheap for either one - it only ever
+ * re-fetches the still-open month. That's what makes it safe to force this
+ * on every recurring tick instead of needing a separate, slower cadence for
+ * per-user "current year" the way an earlier version of this feature did.
  */
-async function refreshCurrentPeriod(users: EmbyUser[], options: { includeUserYearRefresh: boolean }): Promise<void> {
+async function refreshCurrentPeriod(users: EmbyUser[]): Promise<void> {
     const now = new Date();
     const currentYearParam = String(now.getFullYear());
     const currentMonthParam = `${now.getMonth() + 1}-${now.getFullYear()}`;
@@ -176,12 +176,6 @@ async function refreshCurrentPeriod(users: EmbyUser[], options: { includeUserYea
         if (!isCurrentPeriod(timeRange)) continue; // shouldn't happen, but stay safe
 
         await warmServerStatsForPeriod(period, /* forceRefresh */ true);
-
-        const isYearPeriod = timeRange.type === 'year';
-        if (isYearPeriod && !options.includeUserYearRefresh) {
-            continue;
-        }
-
         await runWithConcurrency(users, WARMUP_CONCURRENCY, (user) => warmUserStatsForPeriod(user, period, /* forceRefresh */ true));
     }
 }
@@ -211,10 +205,7 @@ export function scheduleRecurringRefresh(): void {
             try {
                 const users = await emby.getUsers();
                 await warmNewlyCompletedPeriods(users);
-                // includeUserYearRefresh: false - see refreshCurrentPeriod's
-                // doc comment for why the recurring pass never forces the
-                // expensive per-user "current year" recompute.
-                await refreshCurrentPeriod(users, { includeUserYearRefresh: false });
+                await refreshCurrentPeriod(users);
             } catch (e) {
                 console.error('[cache-warmup] Recurring refresh failed:', e);
             }

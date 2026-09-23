@@ -1,44 +1,21 @@
 import { env } from '$env/dynamic/private';
-import { emby, type PlaybackActivity, type EmbyItem, type DeviceBreakdownEntry } from './emby';
+import { emby, buildDeviceBreakdownFromActivity, type PlaybackActivity, type EmbyItem, type DeviceBreakdownEntry } from './emby';
+import { getUserActivityForRange } from './userActivityCache';
+import {
+    type TimeRange,
+    parseTimeRange,
+    formatTimeRangeLabel,
+    timeRangeToString,
+    matchesTimeRange,
+    getAvailableTimeRanges,
+    calculateLookbackDays
+} from './timeRange';
 
-export interface TimeRange {
-    type: 'year' | 'month';
-    year: number;
-    month?: number;  // 1-12, only for type 'month'
-}
-
-export function parseTimeRange(value: string): TimeRange {
-    if (value.indexOf('-') !== -1) {
-        // Supported month formats:
-        // - "1-2026" / "01-2026" (preferred)
-        // - "2026-01" (legacy)
-        const parts = value.split('-');
-
-        if (parts[0].length === 4) {
-            // Legacy year-month format
-            return { type: 'month', year: Number(parts[0]), month: Number(parts[1]) };
-        }
-
-        // Preferred month-year format
-        return { type: 'month', year: Number(parts[1]), month: Number(parts[0]) };
-    }
-    // Format: "2025" (year)
-    return { type: 'year', year: Number(value) };
-}
-
-export function formatTimeRangeLabel(range: TimeRange): string {
-    if (range.type === 'month' && range.month) {
-        return `${range.month}-${range.year}`;
-    }
-    return `${range.year}`;
-}
-
-export function timeRangeToString(range: TimeRange): string {
-    if (range.type === 'month' && range.month) {
-        return `${range.month}-${range.year}`;
-    }
-    return String(range.year);
-}
+// Re-exported for backward compatibility with other existing importers
+// (serverStatsCache.ts, cacheWarmup.ts, route files, etc.) that import
+// these from './stats' rather than './timeRange' directly.
+export type { TimeRange };
+export { parseTimeRange, formatTimeRangeLabel, timeRangeToString, matchesTimeRange, getAvailableTimeRanges, calculateLookbackDays };
 
 export interface TopItem {
     id: string;
@@ -262,24 +239,6 @@ function formatLocalDateTime(date: Date): string {
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }
 
-function getDateParts(dateStr: string): { year: number; month: number } | null {
-    const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (dateMatch) {
-        return {
-            year: Number(dateMatch[1]),
-            month: Number(dateMatch[2])
-        };
-    }
-
-    const parsed = new Date(dateStr);
-    if (isNaN(parsed.getTime())) return null;
-
-    return {
-        year: parsed.getUTCFullYear(),
-        month: parsed.getUTCMonth() + 1
-    };
-}
-
 function getActiveDateKey(date: Date, timeZone: string): string {
     const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone,
@@ -378,70 +337,6 @@ function calculateStreakStats(activeDateKeys: Set<string>): StreakStats {
     };
 }
 
-/**
- * Check if a date matches the given time range
- */
-export function matchesTimeRange(dateStr: string, range: TimeRange): boolean {
-    const dateParts = getDateParts(dateStr);
-    if (!dateParts) return false;
-
-    if (range.type === 'year') {
-        return dateParts.year === range.year;
-    }
-    // Month: check both year and month
-    return dateParts.year === range.year && dateParts.month === range.month;
-}
-
-/**
- * Generate available time range options based on current date
- */
-export function getAvailableTimeRanges(): { value: string; label: string }[] {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1; // 1-12
-
-    const options: { value: string; label: string }[] = [];
-
-    // Add previous year
-    options.push({ value: String(currentYear - 1), label: `${currentYear - 1}` });
-
-    // Add current year (full year-to-date)
-    options.push({ value: String(currentYear), label: `${currentYear}` });
-
-    // Add months of current year (strictly before current month)
-    for (let month = 1; month < currentMonth; month++) {
-        const monthStr = month < 10 ? '0' + month : String(month);
-        options.push({
-            value: `${monthStr}-${currentYear}`,
-            label: `${month}-${currentYear}`
-        });
-    }
-
-    // Reverse to show newest first
-    return options.reverse();
-}
-
-/**
- * Calculate how many days back we need to fetch to cover the requested time range
- */
-export function calculateLookbackDays(range: TimeRange): number {
-    const now = new Date();
-    const targetStart = range.type === 'month' && range.month
-        ? new Date(range.year, range.month - 1, 1) // First day of requested month
-        : new Date(range.year, 0, 1); // Jan 1st of requested year
-
-    // If target is in the future (manual URL edits), fetch a minimal safe window
-    if (targetStart > now) return 31;
-
-    // Calculate difference in days and add a small buffer for timezone/plugin boundaries
-    const diffTime = now.getTime() - targetStart.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    // Avoid over-fetching large windows for current-year/month (can skew capped plugin results)
-    return Math.max(31, diffDays + 14);
-}
-
-
 function normalizeDeviceClient(activity: PlaybackActivity): string {
     const isUnknownValue = (value: string): boolean => {
         const normalized = value.trim().toLowerCase();
@@ -482,12 +377,13 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         ? { type: 'year', year: timeRange }
         : timeRange;
 
-    // Calculate how many days to fetch based on the time range
-    // If requesting a previous year, we need to go back further than 365 days
-    const daysToFetch = calculateLookbackDays(range);
-
-    // Fetch user playback activity
-    const allActivity = await emby.getUserPlaybackActivity(userId, daysToFetch);
+    // Fetch user playback activity. Under Tracearr, this decomposes the
+    // range into calendar months and reuses a per-user cache for completed
+    // months, only fetching the still-open current month - mirroring the
+    // server-wide stats cache in serverStatsCache.ts. Under the Playback
+    // Reporting plugin, it's a single cheap first-party call unchanged from
+    // before (see userActivityCache.ts).
+    const allActivity = await getUserActivityForRange(userId, range);
 
     // Separate video and audio content
     const videoActivity = allActivity.filter(a => {
@@ -800,7 +696,16 @@ export async function aggregateUserStats(userId: string, username: string, timeR
 
     let usedBreakdownReport = false;
     try {
-        const reportRows = await emby.getDeviceNameBreakdown(userId, daysToFetch);
+        // Under Tracearr, derive the breakdown directly from the activity we
+        // already fetched above instead of calling emby.getDeviceNameBreakdown
+        // (which would otherwise re-fetch playback history itself) - avoiding
+        // a second network round-trip now that the main fetch is scoped to
+        // per-month cached windows rather than one fixed day count. The
+        // Playback Reporting plugin path is unchanged: it hits a distinct,
+        // cheap, first-party Emby report endpoint, not a raw-activity re-fetch.
+        const reportRows = emby.useTracearrHistory
+            ? buildDeviceBreakdownFromActivity(allActivity)
+            : await emby.getDeviceNameBreakdown(userId, calculateLookbackDays(range));
         if (reportRows.length > 0) {
             ingestDeviceRows(reportRows);
             usedBreakdownReport = true;

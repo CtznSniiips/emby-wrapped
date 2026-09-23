@@ -49,6 +49,31 @@ export interface DeviceBreakdownEntry {
     count: number;
 }
 
+/**
+ * Pure device-bucketing logic for Tracearr-sourced activity, extracted so
+ * callers that have already fetched a PlaybackActivity[] (e.g. stats.ts's
+ * aggregateUserStats, which now fetches activity via the per-user month
+ * cache in userActivityCache.ts) can derive a device breakdown from it
+ * directly instead of calling getDeviceNameBreakdown, which would otherwise
+ * fetch playback history a second time.
+ */
+export function buildDeviceBreakdownFromActivity(activity: PlaybackActivity[]): DeviceBreakdownEntry[] {
+    const byDevice = new Map<string, DeviceBreakdownEntry>();
+
+    for (const row of activity) {
+        const name = row.device_name || row.device || row.client_name || row.client || row.app_name || row.app || 'Unknown Device';
+        const minutes = Math.max(0, Number(row.duration || '0')) / 60;
+        const current = byDevice.get(name) || { name, minutes: 0, count: 0 };
+        current.minutes += minutes;
+        current.count += 1;
+        byDevice.set(name, current);
+    }
+
+    return [...byDevice.values()]
+        .filter((row) => row.minutes > 0)
+        .sort((a, b) => b.minutes - a.minutes);
+}
+
 function readFirstString(record: RawPlaybackActivity, keys: string[]): string {
     for (const key of keys) {
         const value = record[key];
@@ -282,20 +307,7 @@ class EmbyClient {
     async getDeviceNameBreakdown(userId: string, days: number): Promise<DeviceBreakdownEntry[]> {
         if (this.useTracearrHistory) {
             const activity = await this.getUserPlaybackActivity(userId, days);
-            const byDevice = new Map<string, DeviceBreakdownEntry>();
-
-            for (const row of activity) {
-                const name = row.device_name || row.device || row.client_name || row.client || row.app_name || row.app || 'Unknown Device';
-                const minutes = Math.max(0, Number(row.duration || '0')) / 60;
-                const current = byDevice.get(name) || { name, minutes: 0, count: 0 };
-                current.minutes += minutes;
-                current.count += 1;
-                byDevice.set(name, current);
-            }
-
-            return [...byDevice.values()]
-                .filter((row) => row.minutes > 0)
-                .sort((a, b) => b.minutes - a.minutes);
+            return buildDeviceBreakdownFromActivity(activity);
         }
 
         const report = await this.fetch<RawBreakdownRecord[]>('/user_usage_stats/DeviceName/BreakdownReport', {

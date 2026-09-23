@@ -29,6 +29,8 @@ const STATS_CACHE_DIR =
     env.STATS_CACHE_DIR?.trim() ||
     (process.env.NODE_ENV === 'production' ? '/tmp/stats-cache' : '.cache/stats');
 
+// How long a computed stats entry stays fresh before a request (or the
+// recurring background refresh in cacheWarmup.ts) recomputes it.
 const STATS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 let cacheDirReady = false;

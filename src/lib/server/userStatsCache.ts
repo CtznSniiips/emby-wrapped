@@ -90,10 +90,17 @@ function setCachedStats(userId: string, timeRange: string, stats: UserStats): vo
 }
 
 /**
- * Check if an ID looks like a valid Emby UUID (not a slug)
+ * Check if an ID looks like a real Emby item id rather than a title-derived
+ * slug, which is what decides whether the library's own poster is kept.
+ *
+ * Both id shapes are in the wild: current servers use 32-char hex, older ones
+ * hand out short numeric ids (this instance's series are e.g. "174698"). Only
+ * the slug form is unaddressable, so accept anything else — rejecting a short
+ * numeric id silently threw away a perfectly good library poster and replaced
+ * it with a title search, which is how 《老友记》 got 《快乐老友记》's artwork.
  */
 function isValidEmbyId(id: string): boolean {
-    return /^[0-9a-f]{32}$/i.test(id);
+    return /^(?:[0-9a-f]{32}|\d+)$/i.test(id);
 }
 
 /**

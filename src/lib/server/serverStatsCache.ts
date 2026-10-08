@@ -395,6 +395,104 @@ export function getCompletedPeriods(): string[] {
         .filter((value) => value !== String(currentYear));
 }
 
+// Episode rows point at the episode, so the series has to be looked up. A few
+// ids per show is enough to survive a row whose lookup comes back empty,
+// without dragging a whole season's worth of ids into the request.
+const EPISODE_PROBE_LIMIT = 5;
+
+type TopShowCandidate = { name: string; episodeIds: Set<string> };
+type TopMovieCandidate = { name: string; itemId?: string };
+
+interface LibraryArt {
+    url: string;
+    year?: number;
+}
+
+/**
+ * Emby item ids are normally 32-char hex, but older servers also hand out short
+ * numeric ones (this library's series are e.g. "174698"). Anything else in that
+ * column is a title-derived slug, which the API cannot address.
+ */
+function isLibraryItemId(id: string): boolean {
+    return /^(?:[0-9a-f]{32}|\d+)$/i.test(id);
+}
+
+/**
+ * The library's own poster (and year) for the top items, keyed by
+ * "<type>:<name>".
+ *
+ * This exists because TMDB is searched by *title*, and titles collide: a
+ * library entry called 《老友记》 (Friends, 1994) matches TMDB's 《快乐老友记》
+ * first, so the top-5 card renders an unrelated show. The library already holds
+ * the right artwork, so prefer it and leave TMDB as the fallback — its year is
+ * worth passing along too, since that is what makes the fallback pick the right
+ * release when the library has no poster at all.
+ */
+async function resolveLibraryArt(
+    shows: [string, TopShowCandidate][],
+    movies: [string, TopMovieCandidate][],
+    userId: string | undefined
+): Promise<Map<string, LibraryArt>> {
+    const art = new Map<string, LibraryArt>();
+    if (!userId) return art;
+
+    // A movie row's item id is the movie itself, so one batched lookup gives
+    // both the poster and the year.
+    const movieIds = movies
+        .map(([, data]) => data.itemId)
+        .filter((id): id is string => !!id && isLibraryItemId(id));
+
+    if (movieIds.length > 0) {
+        try {
+            const details = await emby.getItems(userId, movieIds);
+            const yearById = new Map(details.map((item) => [item.Id, item.ProductionYear]));
+            for (const [, data] of movies) {
+                if (!data.itemId || !isLibraryItemId(data.itemId)) continue;
+                art.set(`movie:${data.name}`, {
+                    url: emby.getImageUrl(data.itemId, 'Primary', 400),
+                    year: yearById.get(data.itemId)
+                });
+            }
+        } catch (e) {
+            console.warn('Failed to resolve library posters for top movies:', e);
+        }
+    }
+
+    await Promise.all(shows.map(async ([, data]) => {
+        const ids = [...data.episodeIds].filter(isLibraryItemId);
+        if (ids.length === 0) return;
+
+        try {
+            const items = await emby.getItems(userId, ids);
+
+            // The playback plugin's item id is inconsistent: it usually points
+            // at the episode (SeriesId then resolves the series), but for some
+            // shows it already *is* the series. Prefer the episode route, since
+            // only that one is guaranteed to describe a show.
+            const viaEpisode = items.find((item) => item.SeriesId)?.SeriesId;
+            const asSeries = items.find((item) => item.Type === 'Series');
+            const seriesId = viaEpisode ?? asSeries?.Id;
+            if (!seriesId) return;
+
+            // The series — not the episode — holds the poster, and its year is
+            // the one worth disambiguating a title search with (an episode's
+            // ProductionYear is its own air date, so it would be misleading).
+            const year = viaEpisode
+                ? (await emby.getItems(userId, [seriesId]))[0]?.ProductionYear
+                : asSeries?.ProductionYear;
+
+            art.set(`show:${data.name}`, {
+                url: emby.getImageUrl(seriesId, 'Primary', 400),
+                year
+            });
+        } catch (e) {
+            console.warn(`Failed to resolve the library poster for "${data.name}":`, e);
+        }
+    }));
+
+    return art;
+}
+
 async function computeServerStats(periodParam: string): Promise<ServerStats> {
     const timeRange = parseTimeRange(periodParam);
 
@@ -424,8 +522,8 @@ async function computeServerStats(periodParam: string): Promise<ServerStats> {
     let totalMovies = 0;
     let totalEpisodes = 0;
     const monthlyMinutes = new Array(12).fill(0);
-    const showMap = new Map<string, { name: string; minutes: number; count: number }>();
-    const movieMap = new Map<string, { name: string; minutes: number; count: number }>();
+    const showMap = new Map<string, { name: string; minutes: number; count: number; episodeIds: Set<string> }>();
+    const movieMap = new Map<string, { name: string; minutes: number; count: number; itemId?: string }>();
 
     // Music aggregation
     let musicTotalMinutes = 0;
@@ -486,13 +584,19 @@ async function computeServerStats(periodParam: string): Promise<ServerStats> {
             const existing = movieMap.get(name) || { name, minutes: 0, count: 0 };
             existing.minutes += minutes;
             existing.count += 1;
+            // Keep the library id so the card can use Emby's own poster instead
+            // of a title search that may match a different film.
+            if (!existing.itemId) existing.itemId = String(item.item_id);
             movieMap.set(name, existing);
         } else if (itemType === 'episode') {
             totalEpisodes++;
             const showName = item.item_name.split(' - ')[0] || item.item_name;
-            const existing = showMap.get(showName) || { name: showName, minutes: 0, count: 0 };
+            const existing = showMap.get(showName) || { name: showName, minutes: 0, count: 0, episodeIds: new Set<string>() };
             existing.minutes += minutes;
             existing.count += 1;
+            // The row points at the episode, but the poster hangs off the
+            // series — hold on to a few ids to resolve the SeriesId later.
+            if (existing.episodeIds.size < EPISODE_PROBE_LIMIT) existing.episodeIds.add(String(item.item_id));
             showMap.set(showName, existing);
         }
     }
@@ -500,34 +604,40 @@ async function computeServerStats(periodParam: string): Promise<ServerStats> {
     // Find peak month
     const peakMonth = monthlyMinutes.indexOf(Math.max(...monthlyMinutes));
 
-    // Get top 5 shows with TMDB images (in parallel)
+    // The two top lists share one batched resolution of the library's own
+    // artwork, so pick the candidates first and resolve afterwards.
     const topShowsRaw = [...showMap.entries()]
         .sort((a, b) => b[1].minutes - a[1].minutes)
         .slice(0, 5);
 
+    const topMoviesRaw = [...movieMap.entries()]
+        .sort((a, b) => b[1].minutes - a[1].minutes)
+        .slice(0, 5);
+
+    const libraryArt = await resolveLibraryArt(topShowsRaw, topMoviesRaw, fetchUserId);
+
     const topShows: TopItem[] = await Promise.all(topShowsRaw.map(async ([id, data]) => {
-        const tmdbUrl = await tmdb.findPosterUrl(data.name, 'tv');
+        const art = libraryArt.get(`show:${data.name}`);
+        const tmdbUrl = await tmdb.findPosterUrl(data.name, 'tv', art?.year);
         return {
             id: id.toLowerCase().replace(/\s+/g, '_'),
             name: data.name,
-            imageUrl: tmdbUrl || '',
+            // Emby first. TMDB is searched by title, and 《老友记》 (Friends,
+            // 1994) matches 《快乐老友记》 before it matches the real thing.
+            imageUrl: art?.url || tmdbUrl || '',
             tmdbImageUrl: tmdbUrl || undefined,
             minutes: Math.round(data.minutes),
             count: data.count
         };
     }));
 
-    // Get top 5 movies with TMDB images (in parallel)
-    const topMoviesRaw = [...movieMap.entries()]
-        .sort((a, b) => b[1].minutes - a[1].minutes)
-        .slice(0, 5);
-
     const topMovies: TopItem[] = await Promise.all(topMoviesRaw.map(async ([id, data]) => {
+        const art = libraryArt.get(`movie:${data.name}`);
         const tmdbUrl = await tmdb.findPosterUrl(data.name, 'movie');
         return {
             id: id.toLowerCase().replace(/\s+/g, '_'),
             name: data.name,
-            imageUrl: tmdbUrl || '',
+            imageUrl: art?.url || tmdbUrl || '',
             tmdbImageUrl: tmdbUrl || undefined,
             minutes: Math.round(data.minutes),
             count: data.count

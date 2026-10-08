@@ -64,16 +64,15 @@
 	}
 
 	function getImageUrl(item: TopItem): string {
+		// Emby already holds the correctly-matched artwork for this item; the
+		// TMDB lookup is name-based and can easily resolve to a same-titled show
+		// from another country (e.g. 「老友记」 -> 239028《快乐老友记》instead of
+		// 1668《Friends》). So: Emby art first, TMDB only as fallback once the
+		// Emby image has actually failed to load — or if Emby has no art at all,
+		// which happens when the item was never scraped.
 		let url = item.imageUrl;
-		if (usingFallback.has(item.id)) {
-			if (item.tmdbImageUrl && item.imageUrl !== item.tmdbImageUrl) {
-				url = item.imageUrl; // Retry/fallback logic (kept simple for now)
-			}
-		}
-		if (item.tmdbImageUrl) {
+		if (item.tmdbImageUrl && (!url || imageErrors.has(item.id))) {
 			url = item.tmdbImageUrl;
-		} else {
-			url = item.imageUrl;
 		}
 
 		// Use our local proxy to cache the image and fix CORS

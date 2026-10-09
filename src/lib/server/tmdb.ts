@@ -9,6 +9,8 @@ interface TMDBSearchResult {
     title?: string;
     poster_path: string | null;
     backdrop_path: string | null;
+    first_air_date?: string;
+    release_date?: string;
 }
 
 interface TMDBSearchResponse {
@@ -27,7 +29,7 @@ class TMDBClient {
     /**
      * Search for a TV show by name
      */
-    async searchTV(query: string): Promise<TMDBSearchResult | null> {
+    async searchTV(query: string, year?: number): Promise<TMDBSearchResult | null> {
         if (!this.isConfigured) {
             console.warn('TMDB: API key not configured');
             return null;
@@ -46,8 +48,26 @@ class TMDBClient {
             }
 
             const data: TMDBSearchResponse = await response.json();
+
+            // Same-titled shows exist across countries and eras. Searching
+            // 「老友记」returns 239028《快乐老友记》(2023) first, while the
+            // intended show is 1668《Friends》(1994). When the caller knows the
+            // year, prefer a result that actually matches it; only fall back to
+            // result[0] if nothing matches, so a slightly-off year never
+            // blanks out a poster.
+            if (year !== undefined) {
+                const match = data.results.find((r) =>
+                    (r.first_air_date || '').startsWith(String(year))
+                );
+                if (match) {
+                    console.log(`TMDB found: "${query}" (${year}) -> ${match.name} [${match.id}]`);
+                    return match;
+                }
+                console.warn(`TMDB: no ${year} match for "${query}", using top result`);
+            }
+
             if (data.results[0]) {
-                console.log(`TMDB found: "${query}" -> poster: ${data.results[0].poster_path}`);
+                console.log(`TMDB found: "${query}" -> ${data.results[0].name} [${data.results[0].id}]`);
             }
             return data.results[0] || null;
         } catch (e) {
@@ -59,7 +79,7 @@ class TMDBClient {
     /**
      * Search for a movie by name
      */
-    async searchMovie(query: string): Promise<TMDBSearchResult | null> {
+    async searchMovie(query: string, year?: number): Promise<TMDBSearchResult | null> {
         if (!this.isConfigured) return null;
 
         try {
@@ -72,6 +92,25 @@ class TMDBClient {
             if (!response.ok) return null;
 
             const data: TMDBSearchResponse = await response.json();
+
+            // Remakes and same-titled foreign releases collide just as often as
+            // TV shows do. Same rule as searchTV: prefer the result released in
+            // the year the library reports, and fall back to result[0] rather
+            // than risk blanking the poster over a slightly-off year.
+            if (year !== undefined) {
+                const match = data.results.find((r) =>
+                    (r.release_date || '').startsWith(String(year))
+                );
+                if (match) {
+                    console.log(`TMDB found: "${query}" (${year}) -> ${match.title} [${match.id}]`);
+                    return match;
+                }
+                console.warn(`TMDB: no ${year} match for "${query}", using top result`);
+            }
+
+            if (data.results[0]) {
+                console.log(`TMDB found: "${query}" -> ${data.results[0].title} [${data.results[0].id}]`);
+            }
             return data.results[0] || null;
         } catch (e) {
             console.warn('TMDB movie search failed:', e);
@@ -100,16 +139,16 @@ class TMDBClient {
      * Results are cached (by name+type) for POSTER_CACHE_TTL since poster
      * art essentially never changes for a given title.
      */
-    async findPosterUrl(name: string, type: 'tv' | 'movie'): Promise<string | null> {
-        const cacheKey = `${type}:${name.toLowerCase().trim()}`;
+    async findPosterUrl(name: string, type: 'tv' | 'movie', year?: number): Promise<string | null> {
+        const cacheKey = `${type}:${name.toLowerCase().trim()}${year !== undefined ? `:${year}` : ''}`;
         const cached = posterCache.get(cacheKey);
         if (cached && Date.now() - cached.time < POSTER_CACHE_TTL) {
             return cached.url;
         }
 
         const result = type === 'tv'
-            ? await this.searchTV(name)
-            : await this.searchMovie(name);
+            ? await this.searchTV(name, year)
+            : await this.searchMovie(name, year);
 
         const url = result ? this.getPosterUrl(result) : null;
         posterCache.set(cacheKey, { url, time: Date.now() });

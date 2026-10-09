@@ -516,7 +516,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
             // For Tracearr records, itemId is a pseudo hash (unstable across plays).
             // Use item_name as a stable aggregation key, mirroring the episode fix above.
             const movieKey = activity._fromTracearr
-                ? activity.item_name.toLowerCase().trim()
+                ? `slug:${activity.item_name.toLowerCase().trim()}`
                 : itemId;
             const existing = movieStats.get(movieKey) || { minutes: 0, count: 0, name: activity.item_name };
             existing.minutes += minutes;
@@ -536,7 +536,11 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         } else if (itemType === 'episode') {
             // Extract show name from "Show Name - sXXeXX - Episode Title" format
             const showName = activity.item_name.split(' - ')[0] || activity.item_name;
-            const showId = item?.SeriesId || showName.toLowerCase().replace(/\s+/g, '_');
+            // The slug fallback is prefixed so that a purely numeric show title
+            // (24, 1883, 1923) can never be mistaken for an Emby item id by
+            // isEmbyItemId(), which would keep a poster URL for an item that
+            // does not exist.
+            const showId = item?.SeriesId || `slug:${showName.toLowerCase().replace(/\s+/g, '_')}`;
             uniqueShowIds.add(showId);
 
             const existing = showStats.get(showId) || {

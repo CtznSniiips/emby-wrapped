@@ -11,8 +11,16 @@
 
 	let visible = false;
 	let phase = 0;
-	let imageErrors: Set<string> = new Set();
-	let usingFallback: Set<string> = new Set();
+
+	// A poster moves through at most three stages: the library's own image, the
+	// TMDB fallback, then a generated gradient. One map replaces the previous
+	// pair of Sets, because the URL and the template branch have to be derived
+	// from the *same* state. Before, the failure was recorded in `usingFallback`
+	// while the URL only consulted `imageErrors`, so a broken Emby image stayed
+	// on screen: the src never changed, so no second error ever fired to push it
+	// on to TMDB (or to the gradient).
+	type PosterStage = "emby" | "tmdb" | "failed";
+	let posterStages: Map<string, PosterStage> = new Map();
 
 	onMount(() => {
 		setTimeout(() => {
@@ -55,29 +63,40 @@
 		return `linear-gradient(135deg, hsl(${hue1}, 60%, 30%) 0%, hsl(${hue2}, 50%, 20%) 100%)`;
 	}
 
-	function handleImageError(item: TopItem) {
-		if (!usingFallback.has(item.id)) {
-			usingFallback = new Set([...usingFallback, item.id]);
-		} else {
-			imageErrors = new Set([...imageErrors, item.id]);
-		}
+	function stageFor(item: TopItem, stages: Map<string, PosterStage>): PosterStage {
+		const known = stages.get(item.id);
+		if (known) return known;
+		if (item.imageUrl) return "emby";
+		return item.tmdbImageUrl ? "tmdb" : "failed";
 	}
 
-	function getImageUrl(item: TopItem): string {
-		let url = item.imageUrl;
-		if (usingFallback.has(item.id)) {
-			if (item.tmdbImageUrl && item.imageUrl !== item.tmdbImageUrl) {
-				url = item.imageUrl; // Retry/fallback logic (kept simple for now)
-			}
-		}
-		if (item.tmdbImageUrl) {
-			url = item.tmdbImageUrl;
-		} else {
-			url = item.imageUrl;
-		}
+	/**
+	 * The proxied URL for whichever image this item should currently be showing,
+	 * or null once both sources are exhausted and the gradient takes over.
+	 *
+	 * Emby already holds the correctly-matched artwork for this item; the TMDB
+	 * lookup is name-based and can easily resolve to a same-titled show from
+	 * another country (e.g. 「老友记」 -> 239028《快乐老友记》 instead of
+	 * 1668《Friends》), so Emby art comes first and TMDB is only the fallback.
+	 * It is also the only fallback when the item was never scraped at all.
+	 *
+	 * `stages` is a parameter rather than a closure read on purpose: Svelte only
+	 * re-runs an expression when a dependency it can see changes, and a Map read
+	 * inside the function body would not be one.
+	 */
+	function getImageUrl(item: TopItem, stages: Map<string, PosterStage>): string | null {
+		const stage = stageFor(item, stages);
+		const source =
+			stage === "emby" ? item.imageUrl : stage === "tmdb" ? item.tmdbImageUrl ?? "" : "";
+		if (!source) return null;
 
 		// Use our local proxy to cache the image and fix CORS
-		return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+		return `/api/proxy-image?url=${encodeURIComponent(source)}`;
+	}
+
+	function handleImageError(item: TopItem) {
+		const canFallBackToTmdb = stageFor(item, posterStages) === "emby" && !!item.tmdbImageUrl;
+		posterStages = new Map(posterStages).set(item.id, canFallBackToTmdb ? "tmdb" : "failed");
 	}
 </script>
 
@@ -118,12 +137,13 @@
 			<!-- Rank #1 Hero -->
 			{#if topFive[0]}
 				{@const item = topFive[0]}
+				{@const posterUrl = getImageUrl(item, posterStages)}
 				<div class="hero-item" class:show={phase >= 2}>
 					<div class="hero-rank">1</div>
 					<div class="hero-poster-wrap">
-						{#if !imageErrors.has(item.id)}
+						{#if posterUrl}
 							<img
-								src={getImageUrl(item)}
+								src={posterUrl}
 								alt={item.name}
 								class="hero-poster"
 								on:error={() => handleImageError(item)}
@@ -157,6 +177,7 @@
 					{@const rank = i + 2}
 					<!-- Rows animate in pairs: 2&3 (idx 0&1), 4&5 (idx 2&3) -->
 					{@const showPhase = rank <= 3 ? 3 : 4}
+					{@const posterUrl = getImageUrl(item, posterStages)}
 					<div
 						class="grid-item"
 						class:show={phase >= showPhase}
@@ -164,9 +185,9 @@
 					>
 						<div class="rank-badge">#{rank}</div>
 						<div class="grid-poster-wrap">
-							{#if !imageErrors.has(item.id)}
+							{#if posterUrl}
 								<img
-									src={getImageUrl(item)}
+									src={posterUrl}
 									alt={item.name}
 									class="grid-poster"
 									on:error={() => handleImageError(item)}

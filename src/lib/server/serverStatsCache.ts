@@ -445,12 +445,17 @@ async function resolveLibraryArt(
     if (movieIds.length > 0) {
         try {
             const details = await emby.getItems(userId, movieIds);
-            const yearById = new Map(details.map((item) => [item.Id, item.ProductionYear]));
+            const detailsById = new Map(details.map((item) => [item.Id, item]));
             for (const [, data] of movies) {
-                if (!data.itemId || !isEmbyItemId(data.itemId)) continue;
+                // Only trust ids Emby actually returned. An id's shape is not
+                // enough: Tracearr's pseudoItemId() fallback is a plain integer,
+                // which passes isEmbyItemId() but addresses no item (or, on
+                // servers with short numeric ids, possibly an unrelated one).
+                const found = data.itemId ? detailsById.get(data.itemId) : undefined;
+                if (!found) continue;
                 art.set(`movie:${data.name}`, {
-                    url: emby.getImageUrl(data.itemId, 'Primary', 400),
-                    year: yearById.get(data.itemId)
+                    url: emby.getImageUrl(found.Id, 'Primary', 400),
+                    year: found.ProductionYear
                 });
             }
         } catch (e) {

@@ -51,6 +51,9 @@
 	}
 
 	$: topFive = items.slice(0, 5);
+	// A new list (e.g. a different period) starts every poster from scratch, so
+	// a title that failed last time gets another chance at its library art.
+	$: items, (posterStages = new Map());
 	$: displayCount = totalCount > 0 ? totalCount : items.length;
 
 	function getGradientFromName(name: string): string {
@@ -95,7 +98,14 @@
 	}
 
 	function handleImageError(item: TopItem) {
-		const canFallBackToTmdb = stageFor(item, posterStages) === "emby" && !!item.tmdbImageUrl;
+		// When the item had no library art, the server sets imageUrl to the TMDB
+		// URL too. Moving to the "tmdb" stage would then leave src unchanged, so
+		// no further error event would fire and the broken image would stick —
+		// only fall back when TMDB is genuinely a different image.
+		const canFallBackToTmdb =
+			stageFor(item, posterStages) === "emby" &&
+			!!item.tmdbImageUrl &&
+			item.tmdbImageUrl !== item.imageUrl;
 		posterStages = new Map(posterStages).set(item.id, canFallBackToTmdb ? "tmdb" : "failed");
 	}
 </script>

@@ -1,4 +1,4 @@
-import { emby, type EmbyItem, type EmbyUser } from './emby';
+import { emby, isEmbyItemId, type EmbyItem, type EmbyUser } from './emby';
 import { tmdb } from './tmdb';
 import { env } from '$env/dynamic/private';
 import {
@@ -409,15 +409,6 @@ interface LibraryArt {
 }
 
 /**
- * Emby item ids are normally 32-char hex, but older servers also hand out short
- * numeric ones (this library's series are e.g. "174698"). Anything else in that
- * column is a title-derived slug, which the API cannot address.
- */
-function isLibraryItemId(id: string): boolean {
-    return /^(?:[0-9a-f]{32}|\d+)$/i.test(id);
-}
-
-/**
  * The library's own poster (and year) for the top items, keyed by
  * "<type>:<name>".
  *
@@ -427,6 +418,11 @@ function isLibraryItemId(id: string): boolean {
  * the right artwork, so prefer it and leave TMDB as the fallback — its year is
  * worth passing along too, since that is what makes the fallback pick the right
  * release when the library has no poster at all.
+ *
+ * Batched deliberately: one lookup covers every movie, one covers every
+ * candidate episode/series id across all five shows, and one covers the
+ * distinct series ids found by the second. Three requests for the whole board,
+ * instead of a lookup plus a follow-up year lookup per show.
  */
 async function resolveLibraryArt(
     shows: [string, TopShowCandidate][],
@@ -438,16 +434,20 @@ async function resolveLibraryArt(
 
     // A movie row's item id is the movie itself, so one batched lookup gives
     // both the poster and the year.
-    const movieIds = movies
-        .map(([, data]) => data.itemId)
-        .filter((id): id is string => !!id && isLibraryItemId(id));
+    const movieIds = [
+        ...new Set(
+            movies
+                .map(([, data]) => data.itemId)
+                .filter((id): id is string => !!id && isEmbyItemId(id))
+        )
+    ];
 
     if (movieIds.length > 0) {
         try {
             const details = await emby.getItems(userId, movieIds);
             const yearById = new Map(details.map((item) => [item.Id, item.ProductionYear]));
             for (const [, data] of movies) {
-                if (!data.itemId || !isLibraryItemId(data.itemId)) continue;
+                if (!data.itemId || !isEmbyItemId(data.itemId)) continue;
                 art.set(`movie:${data.name}`, {
                     url: emby.getImageUrl(data.itemId, 'Primary', 400),
                     year: yearById.get(data.itemId)
@@ -458,37 +458,46 @@ async function resolveLibraryArt(
         }
     }
 
-    await Promise.all(shows.map(async ([, data]) => {
-        const ids = [...data.episodeIds].filter(isLibraryItemId);
-        if (ids.length === 0) return;
+    const candidateIds = [
+        ...new Set(shows.flatMap(([, data]) => [...data.episodeIds].filter(isEmbyItemId)))
+    ];
+    if (candidateIds.length === 0) return art;
 
-        try {
-            const items = await emby.getItems(userId, ids);
+    try {
+        const items = await emby.getItems(userId, candidateIds);
+        const byId = new Map(items.map((item) => [item.Id, item]));
 
-            // The playback plugin's item id is inconsistent: it usually points
-            // at the episode (SeriesId then resolves the series), but for some
-            // shows it already *is* the series. Prefer the episode route, since
-            // only that one is guaranteed to describe a show.
-            const viaEpisode = items.find((item) => item.SeriesId)?.SeriesId;
-            const asSeries = items.find((item) => item.Type === 'Series');
+        // The playback plugin's item id is inconsistent: it usually points at
+        // the episode (SeriesId then resolves the series), but for some shows it
+        // already *is* the series. Prefer the episode route, since only that one
+        // is guaranteed to describe a show.
+        const seriesIdByShow = new Map<string, string>();
+        for (const [, data] of shows) {
+            const resolved = [...data.episodeIds]
+                .map((id) => byId.get(id))
+                .filter((item): item is EmbyItem => !!item);
+            const viaEpisode = resolved.find((item) => item.SeriesId)?.SeriesId;
+            const asSeries = resolved.find((item) => item.Type === 'Series');
             const seriesId = viaEpisode ?? asSeries?.Id;
-            if (!seriesId) return;
-
-            // The series — not the episode — holds the poster, and its year is
-            // the one worth disambiguating a title search with (an episode's
-            // ProductionYear is its own air date, so it would be misleading).
-            const year = viaEpisode
-                ? (await emby.getItems(userId, [seriesId]))[0]?.ProductionYear
-                : asSeries?.ProductionYear;
-
-            art.set(`show:${data.name}`, {
-                url: emby.getImageUrl(seriesId, 'Primary', 400),
-                year
-            });
-        } catch (e) {
-            console.warn(`Failed to resolve the library poster for "${data.name}":`, e);
+            if (seriesId) seriesIdByShow.set(data.name, seriesId);
         }
-    }));
+
+        // The series — not the episode — holds the poster, and its year is the
+        // one worth disambiguating a title search with (an episode's
+        // ProductionYear is its own air date, so it would be misleading).
+        const seriesIds = [...new Set(seriesIdByShow.values())];
+        const seriesItems = await emby.getItems(userId, seriesIds);
+        const seriesById = new Map(seriesItems.map((item) => [item.Id, item]));
+
+        for (const [name, seriesId] of seriesIdByShow) {
+            art.set(`show:${name}`, {
+                url: emby.getImageUrl(seriesId, 'Primary', 400),
+                year: seriesById.get(seriesId)?.ProductionYear
+            });
+        }
+    } catch (e) {
+        console.warn('Failed to resolve library posters for top shows:', e);
+    }
 
     return art;
 }
@@ -633,7 +642,7 @@ async function computeServerStats(periodParam: string): Promise<ServerStats> {
 
     const topMovies: TopItem[] = await Promise.all(topMoviesRaw.map(async ([id, data]) => {
         const art = libraryArt.get(`movie:${data.name}`);
-        const tmdbUrl = await tmdb.findPosterUrl(data.name, 'movie');
+        const tmdbUrl = await tmdb.findPosterUrl(data.name, 'movie', art?.year);
         return {
             id: id.toLowerCase().replace(/\s+/g, '_'),
             name: data.name,

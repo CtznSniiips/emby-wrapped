@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { env } from '$env/dynamic/private';
 import { tmdb } from './tmdb';
+import { isEmbyItemId } from './emby';
 import {
     aggregateUserStats,
     parseTimeRange,
@@ -89,19 +90,16 @@ function setCachedStats(userId: string, timeRange: string, stats: UserStats): vo
     }
 }
 
-/**
- * Check if an ID looks like a valid Emby UUID (not a slug)
- */
-function isValidEmbyId(id: string): boolean {
-    return /^[0-9a-f]{32}$/i.test(id);
-}
+// Real Emby ids and title-derived slugs are told apart by isEmbyItemId()
+// (emby.ts). Note that stats.ts prefixes its slug fallback with "slug:", so a
+// purely numeric title (24, 1883, 1923, 1917) can't be mistaken for an id.
 
 /**
  * Enhance images for top items - use TMDB when Emby ID is invalid
  */
 async function enhanceTopItemImages(items: TopItem[], type: 'show' | 'movie'): Promise<TopItem[]> {
     const enhanced = await Promise.all(items.map(async (item) => {
-        const hasValidEmbyId = isValidEmbyId(item.id) || (item.seriesId && isValidEmbyId(item.seriesId));
+        const hasValidEmbyId = isEmbyItemId(item.id) || (item.seriesId && isEmbyItemId(item.seriesId));
 
         if (!hasValidEmbyId) {
             try {
@@ -137,7 +135,7 @@ async function enhanceTopItemImages(items: TopItem[], type: 'show' | 'movie'): P
 
 async function enhanceSeriesCompletionImages(items: SeriesCompletionStat[]): Promise<SeriesCompletionStat[]> {
     const enhanced = await Promise.all(items.map(async (item) => {
-        const hasValidEmbyId = isValidEmbyId(item.id);
+        const hasValidEmbyId = isEmbyItemId(item.id);
 
         if (!hasValidEmbyId) {
             try {

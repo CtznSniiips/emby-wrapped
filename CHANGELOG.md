@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.0] - 2026-10-09
+
+### Fixed
+- **Wrong posters for shows and movies that share a title** (#99): Top 5 posters were found by searching TMDB for the title, and the result always replaced the library's own artwork. Titles collide across countries and decades, so a show could get an unrelated poster even when Emby had the right one (for example, 《老友记》/*Friends* (1994) showed the poster for 《快乐老友记》 (2023)). Emby artwork is now always used first, and TMDB is only a fallback. - Thanks @warzook
+- **Home page Top Shows/Movies had no Emby artwork at all** (#99): The server-wide stats used TMDB posters only. They now look up the library poster from the item itself: a movie's own id, or the series an episode belongs to. - Thanks @warzook
+- **TMDB matches now take the year into account** (#99): When the library knows a title's year, the TMDB lookup prefers the result from that year (first air date for TV, release date for movies). If no result matches the year, it uses the top result as before, so a slightly-off year never leaves a poster blank. The year is also part of the poster cache key. - Thanks @warzook
+- **Short numeric Emby ids are now recognized** (#99): Older Emby servers give out short numeric item ids, like `174698`. These were mistaken for title-derived placeholders, so the per-user page replaced the correct library poster with a TMDB search result. - Thanks @warzook
+- **Numeric titles are no longer mistaken for item ids** (#99): Placeholder ids built from titles are now marked with a `slug:` prefix, so shows and films with all-number titles (*24*, *1883*, *1923*, *1917*) can't be mistaken for real item ids. - Thanks @warzook
+- **Broken posters in the Top 5 card** (#99): A poster that failed to load stayed broken. It never tried the TMDB image and never reached the gradient placeholder. Posters now go from library art, to the TMDB image, to the gradient. - Thanks @warzook
+- **Poster stuck broken when TMDB was the only source**: When an item had no library art, the library and TMDB URLs were the same, so the fallback never moved past the broken image. It now goes straight to the gradient placeholder.
+- **Tracearr records without a media id could get a broken poster on the home page**: Their fallback ids are plain numbers, so they passed the item-id check and the page tried to show library artwork for an item that doesn't exist. Library artwork is now used only for items Emby actually returns.
+- **Failed posters stayed failed after switching periods**: The Top 5 card now resets each poster's fallback when the list changes, so a title gets another chance at its library art.
+
+### Changed
+- **Fewer Emby requests for Top 5 artwork** (#99): Poster and year lookups are now batched into 3 requests for the whole board, down from as many as 11. - Thanks @warzook
+- **Clearer TMDB logging** (#99): Logs now show the matched title and TMDB id, so a wrong match is easy to spot in the container logs. - Thanks @warzook
+
 ## [2.7.0] - 2026-09-22
 
 ### Added

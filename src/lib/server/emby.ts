@@ -40,6 +40,21 @@ export interface PlaybackActivity {
     [key: string]: string | number | boolean | undefined;
 }
 
+/**
+ * Whether a value can be addressed as an Emby item id.
+ *
+ * Ids are normally 32-char hex, but older servers also hand out short numeric
+ * ones (this library's series are e.g. "174698"). Anything else — in practice a
+ * title-derived slug — cannot be looked up, which is what decides whether the
+ * library's own poster can be trusted for that item.
+ *
+ * Callers on both the server-stats and per-user paths depend on this, so it
+ * lives here rather than being duplicated (and drifting) in each of them.
+ */
+export function isEmbyItemId(id: string): boolean {
+    return /^(?:[0-9a-f]{32}|\d+)$/i.test(id);
+}
+
 type RawPlaybackActivity = Record<string, string | number | boolean | undefined>;
 type RawBreakdownRecord = Record<string, string | number | boolean | undefined>;
 

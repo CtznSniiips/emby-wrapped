@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.0] - 2026-10-14
+
+### Fixed
+- **`FILTER_USER_ID` now applies to Tracearr history**: Library filtering (e.g. hiding NSFW libraries) only worked with Playback Reporting. Tracearr plays were always let through, so titles from hidden libraries could still appear in the home page Top 5, count toward server totals, and show up on per-user pages. With `FILTER_USER_ID` set, Tracearr movie and episode plays are now checked against the filter user, the same as Playback Reporting plays, and anything that user can't see is left out. Tracearr plays usually don't carry a usable Emby item id, so they're matched by title: movie title for movies, series name for episodes. Without `FILTER_USER_ID`, nothing changes. Your per-user page still shows your full Tracearr history.
+- **Top 5 posters missing for libraries the lookup user can't browse** (#101): The home page checked artwork through a single user's view of the library, so items that user couldn't browse (for example, an admin with restricted library access) lost their library poster and fell back to TMDB or the gradient. Artwork is now checked server-wide. Made-up ids are still rejected, so only items that actually exist in the library get Emby artwork.
+
+### Changed
+- **Stricter title matching for Tracearr plays**: When matching Tracearr plays to library items, the search now looks through several results and keeps only an exact title match, so a closer-ranked lookalike (e.g. "Friends with Benefits" for "Friends") can't be picked by mistake. This also makes genre stats for Tracearr plays more accurate.
+- **Stats fail instead of caching a wrong result**: With `FILTER_USER_ID` set, if Emby title searches keep failing (each is retried once), the stats request now errors and gets retried later. Before, it could quietly drop plays, and completed months are cached indefinitely.
+
+### Notes
+- With `FILTER_USER_ID` set and Tracearr history, a play is dropped when its title no longer matches the library. That happens when an item was renamed, re-matched or removed in Emby after it was played, when the metadata language changed, or when an episode was recorded without a series name.
+- The first load after upgrading may take a little longer with `FILTER_USER_ID` and Tracearr, since each uncached month needs one title search per unique title. Completed months are cached afterwards.
+
 ## [2.8.0] - 2026-10-09
 
 ### Fixed

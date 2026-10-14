@@ -458,6 +458,62 @@ class EmbyClient {
     }
 
     /**
+     * Which of `names` the given user can see, matched by exact
+     * (case-insensitive) title. Returns a map of lowercased title -> item.
+     *
+     * This is how Tracearr plays are checked against FILTER_USER_ID: their
+     * item ids are usually pseudo hashes (see pseudoItemId() in tracearr.ts),
+     * so the user-scoped id lookup can't vouch for them, but a user-scoped
+     * title search can. Unlike searchItemsByName(), it:
+     *  - looks at several results per search and keeps only an exact title
+     *    match, so "Friends" can't be shadowed by a closer-ranked "Friends
+     *    with Benefits";
+     *  - throws if a search keeps failing, instead of returning nothing. A
+     *    failed lookup must not read as "not visible" (or the play would be
+     *    silently dropped), and callers cache completed months indefinitely,
+     *    so it's better to fail this computation and retry later than to
+     *    cache a wrong answer.
+     */
+    async findTitlesVisibleTo(userId: string, names: string[], type: 'Movie' | 'Series'): Promise<Map<string, EmbyItem>> {
+        const visible = new Map<string, EmbyItem>();
+        const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+        if (wanted.length === 0) return visible;
+
+        interface ItemsResponse {
+            Items: EmbyItem[];
+        }
+
+        const search = (name: string) =>
+            this.fetch<ItemsResponse>(`/Users/${userId}/Items`, {
+                searchTerm: name,
+                IncludeItemTypes: type,
+                Recursive: 'true',
+                Limit: '10',
+                Fields: 'Genres,SeriesId,Studios,People,ProductionYear,PremiereDate,CommunityRating,OfficialRating,ImageTags,BackdropImageTags,SeriesPrimaryImageTag'
+            });
+
+        const BATCH = 5;
+        for (let i = 0; i < wanted.length; i += BATCH) {
+            const batch = wanted.slice(i, i + BATCH);
+            await Promise.all(batch.map(async (name) => {
+                let response: ItemsResponse;
+                try {
+                    response = await search(name);
+                } catch {
+                    // One retry for a transient failure; a second failure
+                    // propagates (see above).
+                    response = await search(name);
+                }
+                const key = name.toLowerCase();
+                const match = (response.Items ?? []).find((item) => item.Name?.trim().toLowerCase() === key);
+                if (match) visible.set(key, match);
+            }));
+        }
+
+        return visible;
+    }
+
+    /**
      * Get image URL for an item
      */
     getImageUrl(itemId: string, imageType: 'Primary' | 'Backdrop' = 'Primary', maxWidth: number = 400): string {

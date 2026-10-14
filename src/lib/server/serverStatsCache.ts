@@ -173,6 +173,11 @@ function monthCacheKey(year: number, month: number): string {
     return `${year}-${month}`;
 }
 
+/** The series part of an episode's "Series - SxxExx - Title" display name. */
+function tracearrSeriesName(itemName: string): string {
+    return (itemName.split(' - ')[0] || itemName).trim();
+}
+
 function isCompletedMonth(year: number, month: number): boolean {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -255,12 +260,51 @@ async function fetchRawActivityWindow(
         }
     }
 
+    // Tracearr plays usually carry a pseudo item id (see pseudoItemId() in
+    // tracearr.ts), so the id lookup above can't vouch for them. When
+    // FILTER_USER_ID is set, check their titles instead — movies by title,
+    // episodes by series name — searched as the filter user, so anything in a
+    // library that user can't see is left out just like a Playback Reporting
+    // play would be. A failed search throws (see findTitlesVisibleTo), which
+    // keeps this window from being cached with plays wrongly dropped.
+    let visibleMovies = new Map<string, EmbyItem>();
+    let visibleSeries = new Map<string, EmbyItem>();
+    if (filterUserId) {
+        const movieTitles = new Set<string>();
+        const seriesNames = new Set<string>();
+        for (const { activity } of rawActivities) {
+            for (const item of activity) {
+                if (!item._fromTracearr || itemDetails.has(String(item.item_id))) continue;
+                const itemType = item.item_type?.toLowerCase();
+                if (itemType === 'movie') movieTitles.add(item.item_name);
+                else if (itemType === 'episode') seriesNames.add(tracearrSeriesName(item.item_name));
+            }
+        }
+        if (movieTitles.size > 0 || seriesNames.size > 0) {
+            [visibleMovies, visibleSeries] = await Promise.all([
+                emby.findTitlesVisibleTo(filterUserId, [...movieTitles], 'Movie'),
+                emby.findTitlesVisibleTo(filterUserId, [...seriesNames], 'Series')
+            ]);
+        }
+    }
+
+    const isVisibleToFilterUser = (item: { item_id: string | number; item_type: string; item_name: string; _fromTracearr?: boolean }): boolean => {
+        if (itemDetails.has(String(item.item_id))) return true;
+        if (!item._fromTracearr) return false;
+        const itemType = item.item_type?.toLowerCase();
+        if (itemType === 'movie') return visibleMovies.has(item.item_name.trim().toLowerCase());
+        if (itemType === 'episode') return visibleSeries.has(tracearrSeriesName(item.item_name).toLowerCase());
+        // Live TV and anything else Tracearr reports isn't library content
+        // that a title search could resolve, so it's kept as before.
+        return true;
+    };
+
     const items: MonthPlaybackItem[] = [];
     for (const { activity } of rawActivities) {
         for (const item of activity) {
-            // Check permission / existence.
-            // If filterUserId is set, we strictly require the item to be found in itemDetails
-            if (filterUserId && !item._fromTracearr && !itemDetails.has(String(item.item_id))) {
+            // Check permission / existence: with FILTER_USER_ID set, only
+            // plays of items that user can see are counted.
+            if (filterUserId && !isVisibleToFilterUser(item)) {
                 continue;
             }
             items.push({

@@ -394,6 +394,36 @@ class EmbyClient {
     }
 
     /**
+     * Look items up server-wide, ignoring user permissions.
+     *
+     * This is *not* a substitute for `getItems()`: a user-scoped query answers
+     * "may this user see it", this one answers "does it exist". That distinction
+     * matters for artwork, because `getImageUrl()` builds a server-level URL
+     * (`/Items/{id}/Images/Primary?api_key=...`) that renders no matter which
+     * user is asking. Gating art on a user-scoped lookup therefore threw away
+     * perfectly good posters for anything the lookup user cannot browse — a
+     * hidden library, an adult folder, another user's collection — even though
+     * the image itself loads fine. It is also the stricter existence check:
+     * "this user can't see it" is not "it isn't there", so a made-up id is
+     * still rejected here.
+     */
+    async lookupItems(itemIds: string[]): Promise<EmbyItem[]> {
+        if (itemIds.length === 0) return [];
+
+        interface ItemsResponse {
+            Items: EmbyItem[];
+            TotalRecordCount: number;
+        }
+
+        const response = await this.fetch<ItemsResponse>('/Items', {
+            Ids: itemIds.join(','),
+            Fields: 'Genres,Studios,People,ProductionYear,PremiereDate,CommunityRating,OfficialRating,ImageTags,BackdropImageTags,SeriesId,SeriesPrimaryImageTag'
+        });
+
+        return response.Items;
+    }
+
+    /**
      * Search multiple items by name in batches
      */
     async searchItemsByName(userId: string, names: string[], type: 'Movie' | 'Series'): Promise<EmbyItem[]> {

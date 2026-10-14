@@ -419,6 +419,11 @@ interface LibraryArt {
  * worth passing along too, since that is what makes the fallback pick the right
  * release when the library has no poster at all.
  *
+ * Existence is checked server-wide (`lookupItems`) rather than through the
+ * requesting user: the poster URL is server-level and renders no matter who is
+ * asking, so a library the lookup user cannot browse — an adult folder, a
+ * hidden collection — must not cost the card its artwork.
+ *
  * Batched deliberately: one lookup covers every movie, one covers every
  * candidate episode/series id across all five shows, and one covers the
  * distinct series ids found by the second. Three requests for the whole board,
@@ -426,11 +431,9 @@ interface LibraryArt {
  */
 async function resolveLibraryArt(
     shows: [string, TopShowCandidate][],
-    movies: [string, TopMovieCandidate][],
-    userId: string | undefined
+    movies: [string, TopMovieCandidate][]
 ): Promise<Map<string, LibraryArt>> {
     const art = new Map<string, LibraryArt>();
-    if (!userId) return art;
 
     // A movie row's item id is the movie itself, so one batched lookup gives
     // both the poster and the year.
@@ -444,13 +447,13 @@ async function resolveLibraryArt(
 
     if (movieIds.length > 0) {
         try {
-            const details = await emby.getItems(userId, movieIds);
+            const details = await emby.lookupItems(movieIds);
             const detailsById = new Map(details.map((item) => [item.Id, item]));
             for (const [, data] of movies) {
-                // Only trust ids Emby actually returned. An id's shape is not
-                // enough: Tracearr's pseudoItemId() fallback is a plain integer,
-                // which passes isEmbyItemId() but addresses no item (or, on
-                // servers with short numeric ids, possibly an unrelated one).
+                // Only trust ids the library actually holds. An id's shape is
+                // not enough: a pseudo id may be a plain integer that addresses
+                // no item (or, on servers with short numeric ids, possibly an
+                // unrelated one).
                 const found = data.itemId ? detailsById.get(data.itemId) : undefined;
                 if (!found) continue;
                 art.set(`movie:${data.name}`, {
@@ -469,7 +472,7 @@ async function resolveLibraryArt(
     if (candidateIds.length === 0) return art;
 
     try {
-        const items = await emby.getItems(userId, candidateIds);
+        const items = await emby.lookupItems(candidateIds);
         const byId = new Map(items.map((item) => [item.Id, item]));
 
         // The playback plugin's item id is inconsistent: it usually points at
@@ -491,7 +494,7 @@ async function resolveLibraryArt(
         // one worth disambiguating a title search with (an episode's
         // ProductionYear is its own air date, so it would be misleading).
         const seriesIds = [...new Set(seriesIdByShow.values())];
-        const seriesItems = await emby.getItems(userId, seriesIds);
+        const seriesItems = await emby.lookupItems(seriesIds);
         const seriesById = new Map(seriesItems.map((item) => [item.Id, item]));
 
         for (const [name, seriesId] of seriesIdByShow) {
@@ -628,7 +631,7 @@ async function computeServerStats(periodParam: string): Promise<ServerStats> {
         .sort((a, b) => b[1].minutes - a[1].minutes)
         .slice(0, 5);
 
-    const libraryArt = await resolveLibraryArt(topShowsRaw, topMoviesRaw, fetchUserId);
+    const libraryArt = await resolveLibraryArt(topShowsRaw, topMoviesRaw);
 
     const topShows: TopItem[] = await Promise.all(topShowsRaw.map(async ([id, data]) => {
         const art = libraryArt.get(`show:${data.name}`);

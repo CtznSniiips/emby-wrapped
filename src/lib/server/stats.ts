@@ -446,13 +446,13 @@ export async function aggregateUserStats(userId: string, username: string, timeR
         }
 
         try {
-            const [movieResults, seriesResults] = await Promise.all([
-                emby.searchItemsByName(filterUserId, [...missingMovieTitles], 'Movie'),
-                emby.searchItemsByName(filterUserId, [...missingSeriesNames], 'Series')
+            // Searched as the filter user, so a title in a library that user
+            // can't see comes back unmatched — which is what lets the filter
+            // below leave it out when FILTER_USER_ID is set.
+            const [movieByName, seriesByName] = await Promise.all([
+                emby.findTitlesVisibleTo(filterUserId, [...missingMovieTitles], 'Movie'),
+                emby.findTitlesVisibleTo(filterUserId, [...missingSeriesNames], 'Series')
             ]);
-
-            const movieByName = new Map(movieResults.map(i => [i.Name.toLowerCase(), i]));
-            const seriesByName = new Map(seriesResults.map(i => [i.Name.toLowerCase(), i]));
 
             for (const activity of videoActivity) {
                 if (!activity._fromTracearr) continue;
@@ -460,7 +460,7 @@ export async function aggregateUserStats(userId: string, username: string, timeR
 
                 const itemType = activity.item_type.toLowerCase();
                 if (itemType === 'movie') {
-                    const found = movieByName.get(activity.item_name.toLowerCase());
+                    const found = movieByName.get(activity.item_name.trim().toLowerCase());
                     if (found) itemDetails.set(String(activity.item_id), found);
                 } else if (itemType === 'episode') {
                     const seriesName = activity.item_name.split(' - ')[0]?.trim().toLowerCase();
@@ -470,12 +470,29 @@ export async function aggregateUserStats(userId: string, username: string, timeR
                 }
             }
         } catch (e) {
+            // With FILTER_USER_ID set, an unanswered lookup can't be treated
+            // as "not visible" (the play would be silently dropped, and
+            // completed periods are cached), so fail this computation and let
+            // it be retried. Without it, the lookup only feeds genres.
+            if (env.FILTER_USER_ID) throw e;
             console.warn('Failed to resolve Tracearr item genres by name:', e);
         }
     }
 
-    // Filter video activity to only include items the filter user has permission to access
-    const accessibleVideoActivity = videoActivity.filter(a => a._fromTracearr || itemDetails.has(String(a.item_id)));
+    // Filter video activity to only include items the filter user has
+    // permission to access. Tracearr plays used to be let through
+    // unconditionally; with FILTER_USER_ID set, movies and episodes now have
+    // to resolve (by id or by title, above) like any other play. Without it,
+    // the filter user is the viewer themselves, so their own Tracearr history
+    // is kept as before even when a title can't be matched (e.g. since
+    // removed from the library).
+    const accessibleVideoActivity = videoActivity.filter(a => {
+        if (itemDetails.has(String(a.item_id))) return true;
+        if (!a._fromTracearr) return false;
+        if (!env.FILTER_USER_ID) return true;
+        const itemType = a.item_type.toLowerCase();
+        return itemType !== 'movie' && itemType !== 'episode';
+    });
     const streakTimeZone = getAppTimeZone();
 
     // Build de-duplicated active dates from timestamped playback events.

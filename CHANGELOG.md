@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.9.0] - 2026-10-14
+## [2.9.0] - 2026-10-16
 
 ### Fixed
 - **`FILTER_USER_ID` now applies to Tracearr history**: Library filtering (e.g. hiding NSFW libraries) only worked with Playback Reporting. Tracearr plays were always let through, so titles from hidden libraries could still appear in the home page Top 5, count toward server totals, and show up on per-user pages. With `FILTER_USER_ID` set, Tracearr movie and episode plays are now checked against the filter user, the same as Playback Reporting plays, and anything that user can't see is left out. Tracearr plays usually don't carry a usable Emby item id, so they're matched by title: movie title for movies, series name for episodes. Without `FILTER_USER_ID`, nothing changes. Your per-user page still shows your full Tracearr history.
